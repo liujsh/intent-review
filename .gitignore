@@ -1,0 +1,10 @@
+# 工具自身的任务状态：默认不进入业务 Git Diff（见 PLAN-004）
+# 需要共享时通过显式 export，而不是直接提交
+.intent-review/
+
+# Dogfood 真实任务数据：包含原始需求，可能涉及私有仓库与雇主信息
+# 只提交协议本身（docs/dogfood/PROTOCOL.md），不提交任何任务目录
+docs/dogfood/*/
+
+.DS_Store
+Thumbs.db

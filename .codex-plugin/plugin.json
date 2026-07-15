@@ -1,0 +1,22 @@
+{
+  "name": "intent-review",
+  "version": "0.1.0",
+  "description": "Independent plan and implementation review against the user's original intent.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Intent Review",
+    "shortDescription": "Keep agent plans and code aligned with your intent.",
+    "longDescription": "Intent Review records the original task contract, independently reviews planning documents, and verifies the finished implementation against the approved plan and repository boundaries.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": ["Read-only review", "Workflow"],
+    "defaultPrompt": [
+      "Record this task's intent before planning.",
+      "Review the current plan against my original request.",
+      "Verify the implementation against the approved plan."
+    ]
+  }
+}
