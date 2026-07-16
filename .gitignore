@@ -8,3 +8,8 @@ docs/dogfood/*/
 
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
