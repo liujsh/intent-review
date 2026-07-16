@@ -98,10 +98,17 @@ def _strip_fences(text: str) -> str:
     return _FENCE_RE.sub("", text).strip()
 
 
+def _brace_slice(text: str) -> str:
+    """散文夹 JSON 的兜底：截取首个 { 到末个 }。"""
+    i, j = text.find("{"), text.rfind("}")
+    return text[i:j + 1] if 0 <= i < j else ""
+
+
 def parse_result(text: str) -> ReviewResult:
-    """解析 Reviewer 的文本输出。先按原文，失败后剥离码栏重试。"""
+    """解析 Reviewer 的文本输出。依次尝试：原文 → 剥码栏 → 首尾大括号截取
+    （模型对「只输出 JSON」的服从是概率性的，实测会夹散文）。"""
     last_err: Exception | None = None
-    for candidate in (text.strip(), _strip_fences(text)):
+    for candidate in (text.strip(), _strip_fences(text), _brace_slice(text)):
         if not candidate:
             continue
         try:

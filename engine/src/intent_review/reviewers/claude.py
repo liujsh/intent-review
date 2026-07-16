@@ -10,12 +10,15 @@ import json
 import time
 from pathlib import Path
 
-from ..schema import RESULT_JSON_SCHEMA, parse_result
+from ..schema import RESULT_JSON_SCHEMA, ResultParseError, parse_result
 from . import ReviewerFailure, ReviewRun, resolve_cli, run_cli
 
-_SCHEMA_SUFFIX = (
-    "\n\nJSON Schema 如下，最终回答只输出符合它的 JSON，不要 markdown 代码栏：\n"
+# 放 system prompt：对输出格式的服从率显著高于用户消息里的一句话
+_SYSTEM_SUFFIX = (
+    "你的最终回答必须是一个 JSON 对象，符合用户消息末尾给出的 JSON Schema。"
+    "不要输出任何 JSON 之外的文字、解释或 markdown 代码栏。"
 )
+_SCHEMA_SUFFIX = "\n\n最终回答必须符合的 JSON Schema：\n"
 
 
 def review(
@@ -30,13 +33,17 @@ def review(
     full_prompt = (
         prompt + _SCHEMA_SUFFIX + json.dumps(RESULT_JSON_SCHEMA, ensure_ascii=False)
     )
+    # prompt 走 stdin：argv 途经 .CMD 包装时引号会被 cmd.exe 撕碎
+    #（含 JSON Schema 的提示词实测空输出）
     argv = [
-        cli, "-p", full_prompt,
+        cli, "-p",
         "--output-format", "json",
         "--allowedTools", "Read,Glob,Grep",
+        "--append-system-prompt", _SYSTEM_SUFFIX,
         "--model", model,
     ]
-    stdout, _ = run_cli(argv, cwd=snapshot_dir, timeout_s=timeout_s)
+    stdout, _ = run_cli(argv, cwd=snapshot_dir, timeout_s=timeout_s,
+                        stdin_data=full_prompt)
 
     try:
         envelope = json.loads(stdout.decode("utf-8", errors="replace"))
@@ -45,7 +52,12 @@ def review(
     if envelope.get("is_error"):
         raise ReviewerFailure(f"claude -p 报错: {envelope.get('result', '')[:300]}")
 
-    result = parse_result(envelope.get("result", ""))
+    try:
+        result = parse_result(envelope.get("result", ""))
+    except ResultParseError as exc:
+        # 归入失败态记档（需求 5.6），附原文片段便于诊断
+        raise ReviewerFailure(
+            f"{exc}；result 前 300 字: {envelope.get('result', '')[:300]!r}")
 
     usage = envelope.get("usage", {})
     tokens = {

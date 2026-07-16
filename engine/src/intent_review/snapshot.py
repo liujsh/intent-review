@@ -35,6 +35,38 @@ def resolve_commit(repo: Path, ref: str) -> str:
     return out.decode().strip()
 
 
+def create_worktree_snapshot(repo: Path, dest: Path) -> str:
+    """把当前工作区（含未提交、未跟踪但不含 gitignore 的文件）复制到 dest。
+
+    plan review 的常见场景：方案文档还没提交。用 git ls-files 枚举
+    而不是全目录复制，保证 gitignore（含 .intent-review/）被尊重。
+    返回当前 HEAD 作为参考基线。
+    """
+    import shutil as _shutil
+
+    repo = repo.resolve()
+    dest = dest.resolve()
+    if dest.exists() and any(dest.iterdir()):
+        raise SnapshotError(f"快照目标非空，拒绝覆盖: {dest}")
+    tracked = _git(repo, "ls-files", "-z").decode("utf-8", errors="replace")
+    untracked = _git(
+        repo, "ls-files", "--others", "--exclude-standard", "-z"
+    ).decode("utf-8", errors="replace")
+    files = [f for f in (tracked + untracked).split("\x00") if f.strip()]
+    dest.mkdir(parents=True, exist_ok=True)
+    for rel in files:
+        src = repo / rel
+        if not src.is_file():
+            continue
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _shutil.copy2(src, target)
+    if (dest / ".git").exists():
+        raise SnapshotError("快照中出现 .git，中止")
+    head = _git(repo, "rev-parse", "HEAD").decode().strip()
+    return head
+
+
 def create_snapshot(repo: Path, ref: str, dest: Path) -> str:
     """把 repo 在 ref 处的树导出到 dest（不含 .git）。返回锚定的 commit hash。
 

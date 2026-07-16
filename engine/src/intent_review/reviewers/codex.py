@@ -12,7 +12,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from ..schema import RESULT_JSON_SCHEMA, ReviewResult, parse_result
+from ..schema import RESULT_JSON_SCHEMA, ResultParseError, ReviewResult, parse_result
 from . import ReviewerFailure, ReviewRun, resolve_cli, run_cli
 
 _TOKENS_RE = re.compile(r"tokens used\s*[\r\n]+\s*([\d,]+)")
@@ -45,13 +45,19 @@ def review(
         ]
         if model:
             argv += ["-m", model]
-        argv.append(prompt)
+        # prompt 走 stdin（"-"）：argv 途经 .CMD 包装时引号会被 cmd.exe 撕碎
+        argv.append("-")
 
-        stdout, stderr = run_cli(argv, cwd=snapshot_dir, timeout_s=timeout_s)
+        stdout, stderr = run_cli(argv, cwd=snapshot_dir, timeout_s=timeout_s,
+                                 stdin_data=prompt)
 
         if not out_file.is_file():
             raise ReviewerFailure("codex exec 未产出结果文件")
-        result: ReviewResult = parse_result(out_file.read_text(encoding="utf-8"))
+        raw_text = out_file.read_text(encoding="utf-8")
+        try:
+            result: ReviewResult = parse_result(raw_text)
+        except ResultParseError as exc:
+            raise ReviewerFailure(f"{exc}；输出前 300 字: {raw_text[:300]!r}")
 
     tokens: dict[str, int] = {}
     # codex 的 token 统计可能出现在 stdout 或 stderr，两边都找
