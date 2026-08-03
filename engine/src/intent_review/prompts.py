@@ -99,6 +99,7 @@ def build_impl_review_prompt(
     contract_text: str,
     plan_paths: list[str],
     change_map_text: str,
+    execution_evidence_text: str = "[]",
     focus: str | None = None,
     prev_findings: list[dict] | None = None,
     decisions: list[dict] | None = None,
@@ -125,6 +126,14 @@ def build_impl_review_prompt(
 ```
 {change_map_text}
 ```
+
+## 已记录的测试、构建与运行证据
+
+```json
+{execution_evidence_text}
+```
+
+未记录的检查不得解释为已执行或通过；失败的必需检查不得解释为已通过。
 
 {_history_section(prev_findings, decisions)}
 ## 审查顺序

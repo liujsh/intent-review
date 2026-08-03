@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 from intent_review import cli
-from intent_review.taskstore import load_task, read_metadata
+from intent_review.taskstore import list_tasks, load_task, read_metadata
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -24,8 +24,9 @@ def test_full_cli_state_flow(tmp_path: Path, monkeypatch):
     _git(tmp_path, "add", "-A")
     _git(tmp_path, "commit", "-qm", "base")
 
-    assert cli.main(["init", "--repo", str(tmp_path), "--task", "task-1",
+    assert cli.main(["init", "--repo", str(tmp_path), "--slug", "feature",
                      "--source-file", str(source), "--contract-file", str(contract)]) == 0
+    task_id = list_tasks(tmp_path)[0]
 
     def fake_rounds(**kwargs):
         run_dir = kwargs["run_dir"]
@@ -49,13 +50,16 @@ def test_full_cli_state_flow(tmp_path: Path, monkeypatch):
         return 0
 
     monkeypatch.setattr(cli, "_run_rounds", fake_rounds)
-    common = ["--repo", str(tmp_path), "--task", "task-1", "--rounds", "1"]
+    common = ["--repo", str(tmp_path), "--task", task_id, "--rounds", "1"]
     assert cli.main(["plan-review", *common, "--plan", "plan.md"]) == 0
-    assert cli.main(["approve-plan", "--repo", str(tmp_path), "--task", "task-1",
+    assert cli.main(["approve-plan", "--repo", str(tmp_path), "--task", task_id,
                      "--plan", "plan.md"]) == 0
 
     (tmp_path / "feature.py").write_text("FEATURE = True\n", encoding="utf-8")
     assert cli.main(["impl-review", *common]) == 0
+    assert cli.main(["record-check", "--repo", str(tmp_path), "--task", task_id,
+                     "--command", "pytest", "--exit-code", "0",
+                     "--summary", "passed"]) == 0
     assert cli.main(["approve-implementation", "--repo", str(tmp_path),
-                     "--task", "task-1"]) == 0
-    assert read_metadata(load_task(tmp_path, "task-1"))["stage"] == "ready"
+                     "--task", task_id]) == 0
+    assert read_metadata(load_task(tmp_path, task_id))["stage"] == "ready"

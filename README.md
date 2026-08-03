@@ -1,25 +1,30 @@
 # Intent Review
 
-Intent Review 是面向 AI 编程任务的本地审查引擎、任务账本和 Codex 插件。它逐字保存用户原始需求，在实现前独立审查方案，在实现后对照冻结方案、验收标准和 Git 改动范围进行复核。
+Intent Review 是面向 AI 编程任务的意图溯源与独立审计层，也是本地审查引擎、任务账本和 Codex 插件。它逐字保存用户原始需求，在实现前独立审查方案，在实现后对照冻结方案、运行证据、验收标准和 Git 改动范围进行复核。它不替代 Spec Kit 或 OpenSpec，而是把这些工具产生的 artifacts 当作待审证据接入。
 
 首版核心闭环已经可用：
 
 ```text
-init → plan-review → approve-plan → resume → impl-review
-     → adjudicate → approve-implementation → ready → close
+init → [contract-propose → contract-decide] → plan-review → approve-plan
+     → resume → record-check → impl-review → adjudicate
+     → approve-implementation → ready → close
 ```
 
 Reviewer 默认在全新的只读 Codex 上下文中运行。失败、超时、证据不完整、预算耗尽或过期方案都不会被解释成通过。
 
 ## 当前能力
 
-- 本地 `.intent-review/` Task Store，保存原始意图、结构化契约、状态和只追加裁决。
+- 本地 `.intent-review/` Task Store，由 Engine 生成 Task ID，保存原始意图、宿主 Session、结构化 Contract、状态和只追加裁决。
+- Contract 修订采用 proposal + explicit decision；补充需求后变为 `stale`，不能被静默覆盖。
 - 跨 Session `resume`；多个活跃任务时拒绝猜测。
-- 显式方案批准、不可变方案快照、Git 基线和契约变更后的 `stale` 回退。
+- 显式方案批准、不可变方案快照、Git 基线和 Contract 变化后的 `stale` 回退。
+- 自动发现 GitHub Spec Kit 与 OpenSpec artifacts，仅只读接入，不修改其目录。
 - 方案与实现双阶段 Reviewer，支持 Codex 和 Claude CLI Adapter。
 - staged、unstaged、untracked 和批准后提交的 Git 变更地图。
 - 结构化 Finding、证据核验、验收覆盖矩阵和文件范围矩阵。
+- 测试、构建和运行检查账本；必需检查缺失或失败时禁止 `ready`，显式覆盖必须记录理由。
 - 敏感信息、文件数、输入大小、轮数和任务累计 Token 预算硬闸。
+- Fixture 套件内容锁、运行复现元数据和正式/非正式结果区分。
 - 四个 Codex Skill：`intent-review-init`、`intent-review-plan`、`intent-review-resume`、`intent-review-impl`。
 
 ## 要求
@@ -36,15 +41,19 @@ Engine 没有第三方 Python 运行时依赖。插件自带启动脚本，不�
 
 ```powershell
 python scripts/intent_review.py --help
-python scripts/intent_review.py init --repo . --task 260803-example-a1b2 `
+python scripts/intent_review.py init --repo . --slug example `
   --source-file source.txt --contract-file contract.md
-python scripts/intent_review.py plan-review --repo . --task 260803-example-a1b2 `
+python scripts/intent_review.py plan-review --repo . --task <engine-generated-id> `
   --plan requirements.md design.md tasks.md
-python scripts/intent_review.py approve-plan --repo . --task 260803-example-a1b2 `
+python scripts/intent_review.py approve-plan --repo . --task <id> `
   --plan requirements.md design.md tasks.md
-python scripts/intent_review.py impl-review --repo . --task 260803-example-a1b2
-python scripts/intent_review.py approve-implementation --repo . --task 260803-example-a1b2
+python scripts/intent_review.py record-check --repo . --task <id> `
+  --command "python -m pytest -q" --exit-code 0 --summary "58 passed"
+python scripts/intent_review.py impl-review --repo . --task <id>
+python scripts/intent_review.py approve-implementation --repo . --task <id>
 ```
+
+已有 Spec Kit 或 OpenSpec 工作流时，可分别用 `--from-speckit [feature]` 或 `--from-openspec [change]` 替代 `--plan`。Contract 变化后，先用 `contract-propose` 保存完整提案，再由用户通过 `contract-decide` 明确接受或拒绝。
 
 也可以安装 Engine：
 
@@ -61,19 +70,27 @@ intent-review --help
 cd engine
 python -m pytest -q
 cd ..
+python scripts/run_fixture_eval.py --suite docs/eval --freeze-suite
 python scripts/run_fixture_eval.py --results docs/eval-results --score-only
 ```
 
 当前验证结果：
 
-- Windows 与 Ubuntu 均有 42 个确定性测试通过，包括完整 CLI 状态流。
+- Windows 与 Ubuntu 均有 58 个确定性测试通过，覆盖完整 CLI 状态流、Contract 生命周期、artifact adapter、运行证据和评估套件锁。
 - 20 次真实 Codex Reviewer Fixture 运行完成。
 - 正例命中 16/16，8/8 个正例均双轮命中。
 - 两个对照的 blocker/high 误报为 0。
 - blocker/high 证据有效 24/24，全部 Finding 证据有效 42/42。
 - macOS 已纳入 GitHub Actions 矩阵，需在变更提交并推送后取得远端实跑结果。
 
-冻结阈值、Fixture 和原始结果分别位于 `docs/eval/` 与 `docs/eval-results/`。
+冻结阈值、Fixture 和内容锁位于 `docs/eval/`，原始结果位于 `docs/eval-results/`。现有 20 次运行被诚实标记为 legacy baseline：阈值在运行前预注册，但 scorer 在看到结果后从 category exact match 修正为 claim substance matching。它们不等同于冻结 v2 scorer 后的独立复验。
+
+## 暂置的外部步骤
+
+- 用冻结套件和 v2 scorer 重新运行 20 次付费 Reviewer，形成正式可复现实验。
+- Marketplace 发布、账号设置和远端 macOS CI 实跑。
+
+这些步骤不影响本地 Engine、插件校验和确定性测试，但发布或对外宣称正式基线前必须完成。
 
 ## 数据与安全边界
 

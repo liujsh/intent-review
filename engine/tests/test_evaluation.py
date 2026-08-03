@@ -1,7 +1,11 @@
 import json
 from pathlib import Path
 
-from intent_review.evaluation import score_suite
+import pytest
+
+from intent_review.evaluation import (
+    SuiteLockError, score_suite, suite_digest, verify_suite_lock, write_suite_lock,
+)
 
 
 def _result(category=None):
@@ -63,3 +67,29 @@ def test_hit_uses_substance_not_localized_category(tmp_path: Path):
         (results / "positive" / f"run-{run}.json").write_text(
             json.dumps(localized), encoding="utf-8")
     assert score_suite(suite, results).positive_hits == 2
+
+
+def test_suite_lock_detects_fixture_changes(tmp_path: Path):
+    suite = tmp_path / "suite"
+    fixture = suite / "positive"
+    fixture.mkdir(parents=True)
+    (fixture / "plan.md").write_text("plan\n", encoding="utf-8")
+    (suite / "suite.json").write_text(json.dumps({
+        "fixtures": [{"id": "positive"}], "thresholds": {},
+    }), encoding="utf-8")
+    original = suite_digest(suite)
+    lock = write_suite_lock(suite)
+    assert lock["digest"] == original
+    assert verify_suite_lock(suite) == lock
+    (fixture / "plan.md").write_text("changed\n", encoding="utf-8")
+    with pytest.raises(SuiteLockError, match="已变更"):
+        verify_suite_lock(suite)
+
+
+def test_suite_lock_requires_declared_fixture_directory(tmp_path: Path):
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    (suite / "suite.json").write_text(
+        json.dumps({"fixtures": [{"id": "missing"}]}), encoding="utf-8")
+    with pytest.raises(SuiteLockError, match="不存在"):
+        suite_digest(suite)
