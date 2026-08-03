@@ -1,0 +1,109 @@
+{
+  "findings": [
+    {
+      "severity": "high",
+      "category": "requirement-implementation",
+      "claim": "核心校验未实现：空字符串和仅含空白的名称都会被保存，且没有返回或抛出验证消息。",
+      "evidence": [
+        {
+          "path": "names.py",
+          "line": 1,
+          "detail": "save_name 接受任意 name，没有执行空值或空白检查。"
+        },
+        {
+          "path": "names.py",
+          "line": 2,
+          "detail": "函数无条件返回 {\"saved\": name}，因此 \"\" 和 \"   \" 均走成功路径。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "批准方案承诺验证空名称；任务契约还明确要求空白名称失败并提供验证消息。"
+        }
+      ],
+      "impact": "直接违反原始需求和当前契约，调用方可能保存无效显示名称，也无法向用户解释失败原因。",
+      "recommendation": "保存前检查名称是否为空或 strip 后为空；命中时通过项目约定的验证错误机制返回明确、可展示的消息。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "test-coverage",
+      "claim": "测试仅证明有效名称成功，没有覆盖方案承诺的空名称失败路径，也没有覆盖空白名称和验证消息。",
+      "evidence": [
+        {
+          "path": "test_names.py",
+          "line": 4,
+          "detail": "测试文件只定义了有效名称用例 test_valid_name。"
+        },
+        {
+          "path": "test_names.py",
+          "line": 5,
+          "detail": "唯一断言仅验证 \"Ada\" 被保存，没有失败路径或错误消息断言。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案明确承诺测试 valid 和 empty 两类输入。"
+        }
+      ],
+      "impact": "测试套件虽然显示 1 passed，但不能证明目标行为；缺失的实现不会导致测试失败。",
+      "recommendation": "增加至少两个失败用例：空字符串和仅含空白的字符串；同时断言操作失败以及验证消息的具体内容或稳定语义。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "有效名称成功路径仍然存在：save_name(\"Ada\") 返回保存结果。",
+    "test_names.py 对有效名称成功路径有直接断言，当前测试运行结果为 1 passed。",
+    "未发现新增依赖、未声明公共接口或跨层数据结构改动。",
+    "变更地图中的三个文件都可归属于方案或需求。"
+  ],
+  "unverifiable": [
+    "方案和契约没有规定验证错误应采用异常、返回值还是其他具体接口，因此无法审核具体错误类型；但无论采用何种机制，当前实现均未产生验证消息。"
+  ],
+  "acceptance_coverage": [
+    {
+      "criterion": "空名称必须验证失败并提供验证消息。",
+      "implementation": "names.py:1-2 无条件保存传入值，没有空名称检查或错误消息。",
+      "test_evidence": "test_names.py 没有空字符串用例或消息断言。",
+      "status": "missing"
+    },
+    {
+      "criterion": "仅含空白的名称必须验证失败并提供验证消息。",
+      "implementation": "names.py:1-2 没有 strip 或等价空白检测。",
+      "test_evidence": "test_names.py 没有空白字符串用例或消息断言。",
+      "status": "missing"
+    },
+    {
+      "criterion": "有效名称应继续成功保存。",
+      "implementation": "names.py:1-2 返回包含原始名称的 saved 字段。",
+      "test_evidence": "test_names.py:4-5 使用 \"Ada\" 直接验证成功结果；测试运行通过。",
+      "status": "implemented"
+    },
+    {
+      "criterion": "按方案测试有效和空输入两条成对路径。",
+      "implementation": "有效路径存在，失败路径未实现。",
+      "test_evidence": "只有有效输入测试；空输入、空白输入和验证消息均未覆盖。",
+      "status": "partial"
+    }
+  ],
+  "file_scope": [
+    {
+      "path": "names.py",
+      "requirement": "实现空或纯空白显示名称的验证失败行为。",
+      "reason": "该文件定义 save_name，是目标行为的直接实现位置。",
+      "status": "expected"
+    },
+    {
+      "path": "test_names.py",
+      "requirement": "证明有效输入成功，以及空和纯空白输入携带验证消息失败。",
+      "reason": "该文件是 save_name 的测试文件；修改与方案中的测试承诺直接相关，但当前覆盖不完整。",
+      "status": "expected"
+    },
+    {
+      "path": "plan.md",
+      "requirement": "记录批准的空名称验证及有效/空输入测试方案。",
+      "reason": "该文件是指定的已批准方案，内容与原始需求直接相关。",
+      "status": "expected"
+    }
+  ]
+}

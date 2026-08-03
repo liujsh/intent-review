@@ -1,0 +1,4 @@
+interface:
+  display_name: "Intent Review Init"
+  short_description: "Capture intent and create a durable task contract."
+  default_prompt: "Use -review-init to record this task before planning."

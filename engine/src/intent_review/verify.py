@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from .schema import Evidence, Finding, ReviewResult
 
@@ -95,6 +95,10 @@ def _read_lines(path: Path) -> list[str] | None:
 
 def check_evidence(snapshot_dir: Path, ev: Evidence) -> EvidenceCheck:
     snapshot_dir = snapshot_dir.resolve()
+    # Reject both native and Windows absolute paths on every host. On POSIX,
+    # pathlib otherwise treats ``C:/...`` as a relative path.
+    if Path(ev.path).is_absolute() or PureWindowsPath(ev.path).is_absolute():
+        return EvidenceCheck(ev, EvidenceStatus.PATH_ESCAPES)
     target = (snapshot_dir / ev.path).resolve()
     # 路径必须留在快照内 —— 防 ../ 逃逸与绝对路径注入
     if not target.is_relative_to(snapshot_dir):

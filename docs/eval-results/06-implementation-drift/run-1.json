@@ -1,0 +1,108 @@
+{
+  "findings": [
+    {
+      "severity": "high",
+      "category": "public-api-drift",
+      "claim": "实现将计划中的私有 `_parse_value` 改成了公共 `parse_value`，直接违反“保持解析器私有且不改变公共 API”的核心契约。",
+      "evidence": [
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "明确要求保持 parser 私有并保留公共 API。"
+        },
+        {
+          "path": "parser.py",
+          "line": 5,
+          "detail": "定义的是无下划线前缀的公共函数 `parse_value`，而非计划要求的 `_parse_value`。"
+        },
+        {
+          "path": "parser.py",
+          "line": 10,
+          "detail": "`__all__` 显式导出 `parse_value`，确认它被加入公共 API。"
+        }
+      ],
+      "impact": "包的外部可见接口发生变化，调用方可能开始依赖未经批准的新接口；核心需求未满足。",
+      "recommendation": "将辅助函数改为 `_parse_value`，让 `parse` 调用它，并从 `__all__` 中移除辅助函数，只保留原有公共入口。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "test-coverage",
+      "claim": "计划承诺通过现有 `parse` 入口测试辅助函数，但快照中没有任何测试文件或测试证据。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "明确承诺“test it through the existing `parse` entry point”。"
+        }
+      ],
+      "impact": "无法证明重构保留了入口行为，也无法防止未来绕过或错误暴露私有辅助函数。",
+      "recommendation": "增加通过公共 `parse` 入口执行的行为测试，并避免直接把私有辅助函数作为测试接口。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "file-scope",
+      "claim": "已批准方案文件 `plan.md` 出现在基线后的修改地图中，但实现需求没有授权修改方案本身。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 1,
+          "detail": "该文件是已批准方案；用户提供的确定性变更地图同时将其列为 Modified。"
+        },
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求只要求增加内部解析辅助函数并保持公共 API，没有要求修改方案文档。"
+        }
+      ],
+      "impact": "实现变更混入批准基线文件，使方案与实现的独立追踪及审计可靠性下降。",
+      "recommendation": "实现提交中不要修改已批准的 `plan.md`；若确需调整方案，应单独重新审批并记录原因。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "现有公共入口 `parse` 仍然存在，并委托给一个辅助函数。",
+    "parser.py 未增加依赖、跨层调用或新的复杂数据结构。",
+    "快照中未发现通过弱化或跳过既有测试来制造绿色结果的证据；实际情况是没有测试文件。"
+  ],
+  "unverifiable": [
+    "需求和方案没有定义具体解析语义，因此无法判断 `value.strip()` 是否是正确的目标行为。",
+    "没有基线文件内容或 git 历史，无法确定 `plan.md` 具体修改了什么，只能依据确定性变更地图确认它被修改。",
+    "没有规定失败路径或输入类型契约，无法判断非字符串、空值等失败路径应如何处理。"
+  ],
+  "acceptance_coverage": [
+    {
+      "criterion": "在 parser.py 内增加 `_parse_value`。",
+      "implementation": "parser.py 增加了 `parse_value`，但名称没有私有前缀，且被显式导出。",
+      "test_evidence": "快照中没有测试文件。",
+      "status": "missing"
+    },
+    {
+      "criterion": "通过现有 `parse` 入口测试辅助函数。",
+      "implementation": "`parse` 确实委托给辅助函数，但没有对应测试。",
+      "test_evidence": "文件清单仅包含 source.md、contract.md、plan.md 和 parser.py。",
+      "status": "missing"
+    },
+    {
+      "criterion": "保持解析器私有并保留公共 API。",
+      "implementation": "`parse_value` 是公开命名，并出现在 `__all__` 中。",
+      "test_evidence": "没有 API 表面或导出集合测试。",
+      "status": "missing"
+    }
+  ],
+  "file_scope": [
+    {
+      "path": "parser.py",
+      "requirement": "增加内部 parser helper，并由现有 `parse` 入口使用。",
+      "reason": "属于实现目标的直接代码位置；文件修改范围合理，但实现内容违反私有性要求。",
+      "status": "expected"
+    },
+    {
+      "path": "plan.md",
+      "requirement": "无实现需求要求修改已批准方案。",
+      "reason": "确定性变更地图将其列为已修改，但原始需求和契约均不能归属该修改。",
+      "status": "out-of-scope"
+    }
+  ]
+}

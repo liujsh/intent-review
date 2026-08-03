@@ -1,0 +1,92 @@
+{
+  "findings": [
+    {
+      "severity": "medium",
+      "category": "testing",
+      "claim": "方案承诺的原子替换测试和失败清理测试均未实现。快照中只有实现及说明文件，没有任何测试文件。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "明确承诺“test replacement, and test cleanup on failure”。"
+        },
+        {
+          "path": "atomic_write.py",
+          "line": 8,
+          "detail": "临时文件写入逻辑存在，但没有测试覆盖写入或失败路径。"
+        },
+        {
+          "path": "atomic_write.py",
+          "line": 9,
+          "detail": "替换操作存在，但没有测试证明更新现有文件和新建文件时的目标行为。"
+        },
+        {
+          "path": "atomic_write.py",
+          "line": 11,
+          "detail": "清理逻辑存在，但没有故障注入测试证明 replace/write 失败后临时文件会被删除。"
+        }
+      ],
+      "impact": "关键成功、失败、新建和更新路径仅能通过静态阅读推断；回归或平台差异无法由测试发现，同时未兑现已批准方案的明确测试承诺。",
+      "recommendation": "增加测试：至少验证新建目标、替换已有目标、写入或 replace 失败时原目标保持完整，以及失败后 `.tmp` 文件不存在。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "原子替换已实现：atomic_write.py 第6行将临时文件放在目标同一目录，第9行使用 Path.replace 替换目标，符合 atomic replacement 契约。",
+    "普通异常路径的临时数据清理已实现：atomic_write.py 第7至11行使用 try/finally，并以 missing_ok=True 删除临时文件。",
+    "写入发生在替换之前；若第8行写入失败，既有目标不会被本实现截断或覆盖。",
+    "新建和更新目标共用相同的临时写入及替换路径，静态实现未遗漏其中一类。",
+    "未发现新增第三方依赖、额外数据结构或跨层改动。"
+  ],
+  "unverifiable": [
+    "没有运行时测试证据，无法验证 Path.replace 在所有受支持平台和文件系统上的实际原子性。",
+    "无法从当前快照判断“failure”是否要求覆盖强制终止或断电；这类终止不会执行 finally，可能遗留 `.tmp` 文件。",
+    "没有自批准基线时 plan.md 的旧内容，因此无法判断其被标记为 Modified 的具体文本变化；当前文件仍与需求和契约一致。"
+  ],
+  "acceptance_coverage": [
+    {
+      "criterion": "增加一个小型内部临时文件写入辅助实现。",
+      "implementation": "atomic_write.py 第4至11行定义 write_atomic，并在目标同目录使用 `.tmp` 临时文件。",
+      "test_evidence": "无测试文件。",
+      "status": "implemented"
+    },
+    {
+      "criterion": "使用原子替换，避免中断时目标配置成为部分文件。",
+      "implementation": "atomic_write.py 第8行先完整写入临时文件，第9行通过 Path.replace 替换目标。",
+      "test_evidence": "无新建、更新或中断场景测试。",
+      "status": "implemented"
+    },
+    {
+      "criterion": "失败时清理临时数据。",
+      "implementation": "atomic_write.py 第7至11行通过 finally 删除临时路径。",
+      "test_evidence": "无写入失败或替换失败的故障注入测试。",
+      "status": "implemented"
+    },
+    {
+      "criterion": "测试 replacement 行为。",
+      "implementation": "未发现测试实现。",
+      "test_evidence": "快照仅包含 atomic_write.py、plan.md、contract.md、source.md。",
+      "status": "missing"
+    },
+    {
+      "criterion": "测试 failure cleanup 行为。",
+      "implementation": "未发现测试实现。",
+      "test_evidence": "快照中不存在测试文件或测试用例。",
+      "status": "missing"
+    }
+  ],
+  "file_scope": [
+    {
+      "path": "atomic_write.py",
+      "requirement": "实现配置文件的原子写入及失败清理。",
+      "reason": "直接实现临时写入、原子替换和 finally 清理。",
+      "status": "expected"
+    },
+    {
+      "path": "plan.md",
+      "requirement": "记录已批准的实现及测试方案。",
+      "reason": "内容直接描述临时文件辅助实现、replacement 测试和失败清理测试，能够归属于本需求；但测试承诺未落地。",
+      "status": "expected"
+    }
+  ]
+}

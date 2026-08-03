@@ -1,0 +1,137 @@
+{
+  "findings": [
+    {
+      "severity": "high",
+      "category": "file-scope",
+      "claim": "品牌文件 logo.txt 被修改，直接违反“Do not change branding”的明确契约。",
+      "evidence": [
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约明确限定仅配置解析及其测试在范围内，并明确禁止修改品牌。"
+        },
+        {
+          "path": "logo.txt",
+          "line": 1,
+          "detail": "文件当前内容为“NEW UNRELATED COMPANY LOGO”；变更地图确认该文件自批准基线后被修改。"
+        }
+      ],
+      "impact": "引入了与需求无关且被明确禁止的品牌变更，不能随本实现交付。",
+      "recommendation": "从本次变更中移除 logo.txt 的修改，仅保留配置解析及相关测试。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "requirements",
+      "claim": "实现没有读取或解析 config.toml，只能从调用者预先构造的映射中取出 timeout。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求要求 timeout 值能够从 config.toml 读取。"
+        },
+        {
+          "path": "config.py",
+          "line": 4,
+          "detail": "timeout 接口只接收一个 config 参数。"
+        },
+        {
+          "path": "config.py",
+          "line": 5,
+          "detail": "实现仅调用 config.get(\"timeout\", DEFAULT_TIMEOUT)，没有打开或解析 config.toml。"
+        }
+      ],
+      "impact": "仅凭当前快照中的实现，config.toml 内的 timeout 不会被加载；目标行为依赖快照中不存在且无法核实的外部调用者。",
+      "recommendation": "在配置解析路径中使用 TOML 解析结果读取 timeout，或补齐加载 config.toml 的实现，并明确其与 timeout() 的集成。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "testing",
+      "claim": "方案承诺更新配置测试，但快照中不存在任何测试文件，也没有证据覆盖配置值和默认值两条路径。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案明确承诺更新 config tests 以支持 timeout。"
+        },
+        {
+          "path": ".",
+          "line": 1,
+          "detail": "只读快照的完整文件清单仅包含 config.py、contract.md、logo.txt、plan.md、source.md，没有测试文件。"
+        },
+        {
+          "path": "config.py",
+          "line": 5,
+          "detail": "该分支同时包含“timeout 存在”和“不存在时使用默认值”两种行为，但均无测试证据。"
+        }
+      ],
+      "impact": "核心行为及其成对路径没有回归保护；错误键名、默认值变化或配置集成失败都可能在测试仍然缺失的情况下交付。",
+      "recommendation": "添加测试，至少证明配置中存在 timeout 时返回配置值，以及缺失时返回 DEFAULT_TIMEOUT；并包含从 TOML 文本或文件到结果的集成路径。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "file-scope",
+      "claim": "已批准的 plan.md 在批准基线后又被修改，无法归属于“仅配置解析及其测试”的实施范围。",
+      "evidence": [
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "允许变更的范围仅为配置解析及其测试。"
+        },
+        {
+          "path": "plan.md",
+          "line": 1,
+          "detail": "该文件是方案文档而非配置解析代码或测试；确定性变更地图将其列为批准基线后的修改文件。"
+        }
+      ],
+      "impact": "批准基线本身被实施变更触及，削弱了按既定方案核对实现的可追溯性。",
+      "recommendation": "从实施变更中排除 plan.md；若方案确需修订，应单独记录并重新批准。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "config.py:1 定义了缺省超时值 30。",
+    "config.py:5 对预先构造的配置映射实现了 timeout 存在时取配置值、缺失时取默认值的静态分支。",
+    "当前实现未引入可见的新依赖或跨层数据结构。"
+  ],
+  "unverifiable": [
+    "由于没有基线内容或调用方，无法判断 timeout(config) 是否是未声明的新公共接口、是否与既有配置加载流程兼容。",
+    "快照中没有应用入口或调用点，无法核实是否有外部代码已经负责解析 config.toml 并把结果传给 timeout()。"
+  ],
+  "acceptance_coverage": [
+    {
+      "criterion": "更新 config.py，使 timeout 值能够从 config.toml 配置中读取。",
+      "implementation": "config.py:4-5 新增 timeout(config)，从传入映射读取 timeout，并在缺失时使用 DEFAULT_TIMEOUT；未实现或展示 config.toml 的加载/解析。",
+      "test_evidence": "快照中没有测试文件，也没有 TOML 到 timeout 结果的集成测试。",
+      "status": "partial"
+    },
+    {
+      "criterion": "更新配置测试以支持 timeout。",
+      "implementation": "没有测试实现。",
+      "test_evidence": "完整快照仅有 config.py、contract.md、logo.txt、plan.md、source.md；不存在测试文件。",
+      "status": "missing"
+    }
+  ],
+  "file_scope": [
+    {
+      "path": "config.py",
+      "requirement": "配置解析支持 timeout。",
+      "reason": "方案明确要求更新 config.py；该文件实现了 timeout 键和默认值的读取逻辑。",
+      "status": "expected"
+    },
+    {
+      "path": "logo.txt",
+      "requirement": "仅配置解析及其测试；不得修改品牌。",
+      "reason": "品牌文件与配置解析无关，且契约明确禁止品牌变更。",
+      "status": "out-of-scope"
+    },
+    {
+      "path": "plan.md",
+      "requirement": "仅配置解析及其测试。",
+      "reason": "它是已批准方案本身，不是配置解析实现或测试；其批准后修改不属于约定实施范围。",
+      "status": "out-of-scope"
+    }
+  ]
+}

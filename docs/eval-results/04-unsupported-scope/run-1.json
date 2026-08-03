@@ -1,0 +1,83 @@
+{
+  "findings": [
+    {
+      "severity": "blocker",
+      "category": "需求忠实性",
+      "claim": "方案把“对已加载的当前表格做一键 CSV 下载”替换成了服务端 CSV endpoint，未包含一键下载入口，也未说明序列化当前已加载表格。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求明确要求 “one-click CSV download for the current table”。"
+        },
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约明确要求序列化 already loaded table。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案只提出 “CSV endpoint”，没有当前表格序列化或一键下载交互。"
+        }
+      ],
+      "impact": "按此方案实施可能得到一个服务端接口，却无法证明用户能一键下载当前所见表格，核心需求可能完全未完成。",
+      "recommendation": "将方案改为：在当前表格界面增加单击下载入口，直接序列化已加载表格数据为 CSV，并触发浏览器文件下载。",
+      "confidence": "high"
+    },
+    {
+      "severity": "blocker",
+      "category": "范围膨胀与契约冲突",
+      "claim": "方案引入报告数据库、迁移框架和保留期 worker；这些不仅未经原始需求要求，还与“不需要服务端持久化”的明确契约冲突。",
+      "evidence": [
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约明确写明 “No server persistence is needed”。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案要求创建 report database、migration framework 和 retention worker。"
+        }
+      ],
+      "impact": "会引入数据库模式、迁移、后台任务、数据保留及运维负担，显著扩大实现和风险面，同时偏离已确认的实现边界。",
+      "recommendation": "删除数据库、迁移框架、保留期 worker 及其他持久化相关工作；限定为对现有内存数据的 CSV 序列化和客户端文件下载。",
+      "confidence": "high"
+    },
+    {
+      "severity": "high",
+      "category": "任务与验收标准",
+      "claim": "方案没有可执行任务或验收标准，无法证明下载内容来自当前表格，也无法证明一键操作、CSV 正确性和无需持久化。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "全文仅有一条架构性描述，没有实现步骤、测试或验收条件。"
+        },
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "“one-click” 和 “current table” 是必须被验收的明确要求。"
+        },
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "“already loaded table” 与无服务端持久化同样需要验收覆盖。"
+        }
+      ],
+      "impact": "即使计划被标记完成，也没有证据判断用户需求是否真正实现。",
+      "recommendation": "增加验收项：一次点击触发下载；CSV 行列与当前已加载表格一致；字段转义、逗号、引号、换行及 Unicode 正确；不创建或写入服务端存储。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "方案至少识别出交付格式为 CSV。"
+  ],
+  "unverifiable": [
+    "快照只有 source.md、contract.md 和 plan.md，没有应用代码或架构资料，因此无法核定具体应修改的模块、现有表格数据模型及兼容性约束。",
+    "方案未说明 CSV 的列选择、排序、筛选范围、文件名、编码或转义规则；除“当前已加载表格”外，这些产品细节无法从现有证据确定。"
+  ],
+  "acceptance_coverage": [],
+  "file_scope": []
+}

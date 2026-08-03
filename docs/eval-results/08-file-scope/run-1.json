@@ -1,0 +1,134 @@
+{
+  "findings": [
+    {
+      "severity": "high",
+      "category": "file-scope",
+      "claim": "logo.txt 是明确越界的品牌变更。",
+      "evidence": [
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约限定仅配置解析及其测试在范围内，并明确要求“Do not change branding.”"
+        },
+        {
+          "path": "logo.txt",
+          "line": 1,
+          "detail": "内容为“NEW UNRELATED COMPANY LOGO”；变更地图确认该文件已修改。"
+        }
+      ],
+      "impact": "违反明确的任务范围和禁止变更品牌的约束，可能把无关品牌内容带入交付。",
+      "recommendation": "从本次变更中移除 logo.txt 的修改。",
+      "confidence": "high"
+    },
+    {
+      "severity": "high",
+      "category": "functionality",
+      "claim": "实现没有读取或解析 config.toml，只能从调用方已提供的映射中取出 timeout。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求要求 timeout 值可从 config.toml 读取。"
+        },
+        {
+          "path": "config.py",
+          "line": 4,
+          "detail": "timeout(config) 直接调用 config.get；文件中没有打开、读取或解析 config.toml 的逻辑。"
+        }
+      ],
+      "impact": "仅凭当前快照，config.toml 中配置 timeout 的目标路径无法工作；调用方必须预先完成未实现的解析。",
+      "recommendation": "实现 config.toml 的读取/解析路径，并将解析出的 timeout 暴露给现有配置接口；同时覆盖默认值与配置值路径。",
+      "confidence": "high"
+    },
+    {
+      "severity": "high",
+      "category": "testing",
+      "claim": "方案承诺更新配置测试，但快照中没有任何测试文件。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案明确承诺更新 config tests 以支持 timeout。"
+        },
+        {
+          "path": "config.py",
+          "line": 1,
+          "detail": "快照中唯一实现文件仅包含默认值和取值函数；项目文件清单不存在测试文件。"
+        }
+      ],
+      "impact": "配置值、缺省值、TOML 解析成功及失败路径均没有自动化证据，目标行为无法得到验证。",
+      "recommendation": "添加配置测试，至少证明 config.toml 中的 timeout 被读取、缺失时使用默认值，并覆盖无效 TOML 或无效 timeout 的失败行为。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "file-scope",
+      "claim": "已批准的 plan.md 本身出现在基线后的修改列表中，且该修改不能归属于仅限配置解析和测试的实现范围。",
+      "evidence": [
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "当前契约仅允许配置解析及其测试。"
+        },
+        {
+          "path": "plan.md",
+          "line": 1,
+          "detail": "该文件是批准方案文档，而变更地图明确将 plan.md 列为基线后修改文件。"
+        }
+      ],
+      "impact": "批准基线可能在实现阶段被改动，导致当前方案文本无法可靠代表审批时的承诺。",
+      "recommendation": "从实现变更中排除 plan.md，或提供其基线后修改经过单独批准的证据。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "config.py 定义了 DEFAULT_TIMEOUT = 30，并在传入配置不含 timeout 时通过 config.get(..., DEFAULT_TIMEOUT) 使用默认值。",
+    "config.py 在传入映射包含 timeout 时会返回该配置值，未引入新的外部依赖或额外公共数据结构。",
+    "变更地图中的 config.py 可直接归属于方案所述配置支持工作。"
+  ],
+  "unverifiable": [
+    "没有 git 历史或批准时的 plan.md 内容，无法确定 plan.md 基线后具体改了什么，只能确认工具生成的变更地图将其列为 Modified。",
+    "快照没有调用方或 TOML 解析模块，无法验证是否存在仓库外部代码预先解析 config.toml 后再调用 timeout(config)。",
+    "没有需求定义 timeout 的合法类型、范围以及无效值策略，因此无法判断类型和范围校验是否必需。"
+  ],
+  "acceptance_coverage": [
+    {
+      "criterion": "原始需求：允许从 config.toml 读取 timeout。",
+      "implementation": "config.py:4 仅从调用方传入的 config 映射获取 timeout；没有 config.toml 文件读取或 TOML 解析。",
+      "test_evidence": "快照中不存在测试文件。",
+      "status": "partial"
+    },
+    {
+      "criterion": "方案承诺：更新 config.py 以支持 timeout。",
+      "implementation": "config.py:1 定义默认值 30；config.py:4 返回配置中的 timeout 或默认值。",
+      "test_evidence": "没有测试证明配置值和默认值路径。",
+      "status": "implemented"
+    },
+    {
+      "criterion": "方案承诺：更新配置测试以支持 timeout。",
+      "implementation": "没有测试实现。",
+      "test_evidence": "快照文件清单不存在任何测试文件。",
+      "status": "missing"
+    }
+  ],
+  "file_scope": [
+    {
+      "path": "config.py",
+      "requirement": "支持从配置获取 timeout。",
+      "reason": "直接实现 timeout 配置值及默认值读取，属于配置解析范围。",
+      "status": "expected"
+    },
+    {
+      "path": "logo.txt",
+      "requirement": "契约明确禁止更改品牌。",
+      "reason": "内容是无关的新公司 Logo，不能归属于配置解析或测试。",
+      "status": "out-of-scope"
+    },
+    {
+      "path": "plan.md",
+      "requirement": "已批准方案是审查基线；契约仅允许配置解析及测试。",
+      "reason": "变更地图显示批准方案在基线后被修改，但没有证据表明该文档修改获得批准或属于实现范围。",
+      "status": "suspicious"
+    }
+  ]
+}

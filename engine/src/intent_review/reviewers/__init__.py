@@ -52,9 +52,11 @@ def kill_tree(proc: subprocess.Popen) -> None:
 
 
 def clean_env() -> dict[str, str]:
-    """清洗嵌套会话变量：宿主内 spawn claude 会因 CLAUDE_* 报 Not logged in。"""
+    """Remove host-session identity and sandbox flags from a fresh reviewer."""
     import os
-    return {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    blocked = {"CODEX_THREAD_ID", "CODEX_SANDBOX_NETWORK_DISABLED"}
+    return {k: v for k, v in os.environ.items()
+            if not k.startswith("CLAUDE") and k not in blocked}
 
 
 def run_cli(

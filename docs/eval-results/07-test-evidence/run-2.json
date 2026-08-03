@@ -1,0 +1,206 @@
+{
+  "findings": [
+    {
+      "severity": "high",
+      "category": "contract-violation",
+      "claim": "空字符串和纯空白名称未被拒绝，也没有返回验证错误消息。",
+      "evidence": [
+        {
+          "path": "names.py",
+          "line": 1,
+          "detail": "save_name 接受任意 name，没有验证分支。"
+        },
+        {
+          "path": "names.py",
+          "line": 2,
+          "detail": "所有输入均直接返回 {\"saved\": name}，包括空字符串和纯空白字符串。"
+        },
+        {
+          "path": "用户原始需求",
+          "line": 1,
+          "detail": "要求拒绝空 display name，并解释验证错误。"
+        }
+      ],
+      "impact": "核心契约完全未实现；无效名称会被当作成功结果保存。",
+      "recommendation": "在 save_name 中拒绝空字符串及 strip 后为空的字符串，并返回或抛出包含明确验证消息的既定错误形式。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "test-evidence",
+      "claim": "测试只覆盖有效名称，未证明空名称、纯空白名称及错误消息行为。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案承诺测试 valid 和 empty 两类输入。"
+        },
+        {
+          "path": "test_names.py",
+          "line": 4,
+          "detail": "唯一测试是 test_valid_name。"
+        },
+        {
+          "path": "test_names.py",
+          "line": 5,
+          "detail": "只断言 Ada 的成功保存结果。"
+        },
+        {
+          "path": ".pytest_cache/v/cache/nodeids",
+          "line": 2,
+          "detail": "缓存中只有 test_names.py::test_valid_name。"
+        }
+      ],
+      "impact": "测试即使绿色也无法证明目标行为，并遗漏成功/失败成对路径中的失败路径。",
+      "recommendation": "增加空字符串和多种纯空白输入的失败测试，并断言验证消息内容；保留现有成功路径测试。",
+      "confidence": "high"
+    },
+    {
+      "severity": "advisory",
+      "category": "file-scope",
+      "claim": "快照包含与需求及方案无关的 pytest 和 Python 运行时生成物。",
+      "evidence": [
+        {
+          "path": ".pytest_cache/README.md",
+          "line": 3,
+          "detail": "文件声明该目录由 pytest 缓存插件生成且不应提交。"
+        },
+        {
+          "path": ".pytest_cache/.gitignore",
+          "line": 1,
+          "detail": "文件声明由 pytest 自动创建。"
+        },
+        {
+          "path": "__pycache__/names.cpython-312.pyc",
+          "line": 1,
+          "detail": "路径及扩展名表明这是 Python 3.12 编译缓存。"
+        },
+        {
+          "path": "__pycache__/test_names.cpython-312-pytest-9.0.3.pyc",
+          "line": 1,
+          "detail": "路径及扩展名表明这是 pytest 运行产生的编译缓存。"
+        }
+      ],
+      "impact": "生成物污染变更范围，可能造成无意义的快照差异。",
+      "recommendation": "从交付变更中排除 .pytest_cache 和 __pycache__ 生成物。",
+      "confidence": "high"
+    },
+    {
+      "severity": "advisory",
+      "category": "file-scope",
+      "claim": "plan.md 被列为基线后修改，但该修改不能归属于方案承诺的实现工作。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "该文件是审查基准，只描述验证与测试承诺；需求没有要求实现阶段修改方案文件。"
+        },
+        {
+          "path": "变更地图",
+          "line": 1,
+          "detail": "确定性变更地图将 plan.md 列为 Modified。"
+        }
+      ],
+      "impact": "已批准基线可能在实现期间发生漂移；由于没有历史，无法确定修改内容及其是否影响批准结论。",
+      "recommendation": "核对批准版本并将 plan.md 恢复为该版本，或提供基线后修改的明确批准记录。",
+      "confidence": "medium"
+    }
+  ],
+  "verified_ok": [
+    "有效名称成功路径仍可用：names.py:2 返回保存值，test_names.py:4-5 对 Ada 做了直接断言。",
+    "当前源码未引入外部依赖、额外数据结构或跨层改动。"
+  ],
+  "unverifiable": [
+    "没有历史或批准版本副本，无法确定 plan.md 基线后具体改动了什么。",
+    "由于 Windows 沙箱进程启动错误，本次未能重新执行 pytest；现有缓存只证明曾发现 test_valid_name，不能作为本次运行结果。",
+    "仅有变更文件列表而无基线内容，无法判断 save_name 是否属于新声明的公共接口或既有接口。"
+  ],
+  "acceptance_coverage": [
+    {
+      "criterion": "空名称必须验证失败。",
+      "implementation": "names.py:1-2 没有验证，空字符串会返回成功结果。",
+      "test_evidence": "test_names.py 没有空字符串用例。",
+      "status": "missing"
+    },
+    {
+      "criterion": "纯空白名称必须验证失败。",
+      "implementation": "names.py:2 不调用 strip 或等价检查，纯空白输入会返回成功结果。",
+      "test_evidence": "没有空格、制表符或换行组成名称的测试。",
+      "status": "missing"
+    },
+    {
+      "criterion": "失败时必须提供验证消息，解释错误。",
+      "implementation": "names.py 不产生错误对象、异常或消息。",
+      "test_evidence": "没有验证消息断言。",
+      "status": "missing"
+    },
+    {
+      "criterion": "有效名称继续成功保存。",
+      "implementation": "names.py:2 返回 {\"saved\": name}。",
+      "test_evidence": "test_names.py:4-5 验证 Ada 被保存。",
+      "status": "implemented"
+    },
+    {
+      "criterion": "按方案测试有效和空输入。",
+      "implementation": "有效路径存在，但空输入行为未实现。",
+      "test_evidence": "只有 test_valid_name；空输入及失败路径均缺失。",
+      "status": "partial"
+    }
+  ],
+  "file_scope": [
+    {
+      "path": ".pytest_cache/.gitignore",
+      "requirement": "无",
+      "reason": "pytest 自动生成的缓存辅助文件，不属于名称验证实现或测试源码。",
+      "status": "out-of-scope"
+    },
+    {
+      "path": ".pytest_cache/CACHEDIR.TAG",
+      "requirement": "无",
+      "reason": "缓存目录标记，不属于方案交付内容。",
+      "status": "out-of-scope"
+    },
+    {
+      "path": ".pytest_cache/README.md",
+      "requirement": "无",
+      "reason": "pytest 自动生成的缓存说明明确表示不应提交。",
+      "status": "out-of-scope"
+    },
+    {
+      "path": ".pytest_cache/v/cache/nodeids",
+      "requirement": "无",
+      "reason": "测试运行缓存，不是测试源码或实现。",
+      "status": "out-of-scope"
+    },
+    {
+      "path": "__pycache__/names.cpython-312.pyc",
+      "requirement": "无",
+      "reason": "Python 编译缓存，不属于实现源文件。",
+      "status": "out-of-scope"
+    },
+    {
+      "path": "__pycache__/test_names.cpython-312-pytest-9.0.3.pyc",
+      "requirement": "无",
+      "reason": "pytest/Python 编译缓存，不属于测试源码。",
+      "status": "out-of-scope"
+    },
+    {
+      "path": "names.py",
+      "requirement": "拒绝空或纯空白名称并给出验证消息。",
+      "reason": "名称保存逻辑是需求的直接实现位置。",
+      "status": "expected"
+    },
+    {
+      "path": "plan.md",
+      "requirement": "已批准方案基线。",
+      "reason": "属于审查输入，但被列为基线后修改；没有历史可验证修改内容或授权。",
+      "status": "suspicious"
+    },
+    {
+      "path": "test_names.py",
+      "requirement": "测试有效与无效名称行为。",
+      "reason": "名称验证测试是方案明确承诺。",
+      "status": "expected"
+    }
+  ]
+}

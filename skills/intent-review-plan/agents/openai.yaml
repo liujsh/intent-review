@@ -1,0 +1,4 @@
+interface:
+  display_name: "Intent Review Plan"
+  short_description: "Review planning artifacts against the saved user intent."
+  default_prompt: "Use -review-plan to independently review my current plan."

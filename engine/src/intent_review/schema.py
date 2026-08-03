@@ -16,6 +16,13 @@ from typing import Any
 
 SEVERITIES = ("blocker", "high", "medium", "advisory")
 CONFIDENCES = ("high", "medium", "low")
+ACCEPTANCE_STATUSES = ("implemented", "partial", "missing", "unverifiable")
+SCOPE_STATUSES = ("expected", "suspicious", "out-of-scope")
+CATEGORIES = (
+    "contract-drift", "requirement-gap", "unsupported-scope", "wrong-layer",
+    "coupling", "unverifiable", "implementation-drift", "file-scope",
+    "test-evidence",
+)
 
 # 传给 Reviewer 的 JSON Schema（codex exec --output-schema 直接可用）
 RESULT_JSON_SCHEMA: dict[str, Any] = {
@@ -27,7 +34,7 @@ RESULT_JSON_SCHEMA: dict[str, Any] = {
                 "type": "object",
                 "properties": {
                     "severity": {"type": "string", "enum": list(SEVERITIES)},
-                    "category": {"type": "string"},
+                    "category": {"type": "string", "enum": list(CATEGORIES)},
                     "claim": {"type": "string"},
                     "evidence": {
                         "type": "array",
@@ -55,8 +62,37 @@ RESULT_JSON_SCHEMA: dict[str, Any] = {
         },
         "verified_ok": {"type": "array", "items": {"type": "string"}},
         "unverifiable": {"type": "array", "items": {"type": "string"}},
+        "acceptance_coverage": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "criterion": {"type": "string"},
+                    "implementation": {"type": "string"},
+                    "test_evidence": {"type": "string"},
+                    "status": {"type": "string", "enum": list(ACCEPTANCE_STATUSES)},
+                },
+                "required": ["criterion", "implementation", "test_evidence", "status"],
+                "additionalProperties": False,
+            },
+        },
+        "file_scope": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "requirement": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "status": {"type": "string", "enum": list(SCOPE_STATUSES)},
+                },
+                "required": ["path", "requirement", "reason", "status"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["findings", "verified_ok", "unverifiable"],
+    "required": ["findings", "verified_ok", "unverifiable",
+                 "acceptance_coverage", "file_scope"],
     "additionalProperties": False,
 }
 
@@ -84,6 +120,8 @@ class ReviewResult:
     findings: list[Finding]
     verified_ok: list[str] = field(default_factory=list)
     unverifiable: list[str] = field(default_factory=list)
+    acceptance_coverage: list[dict[str, str]] = field(default_factory=list)
+    file_scope: list[dict[str, str]] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -167,9 +205,29 @@ def validate_result(data: Any) -> ReviewResult:
             raise ResultParseError(f"{key} 必须是字符串数组")
         return v
 
+    def _matrix(key: str, fields: tuple[str, ...],
+                statuses: tuple[str, ...]) -> list[dict[str, str]]:
+        value = data.get(key, [])
+        if not isinstance(value, list):
+            raise ResultParseError(f"{key} 必须是数组")
+        for i, row in enumerate(value):
+            if not isinstance(row, dict) or any(
+                    not isinstance(row.get(name), str) for name in fields):
+                raise ResultParseError(f"{key}[{i}] 字段不完整")
+            if row["status"] not in statuses:
+                raise ResultParseError(f"{key}[{i}].status 非法: {row['status']!r}")
+        return value
+
     return ReviewResult(
         findings=findings,
         verified_ok=_str_list("verified_ok"),
         unverifiable=_str_list("unverifiable"),
+        acceptance_coverage=_matrix(
+            "acceptance_coverage",
+            ("criterion", "implementation", "test_evidence", "status"),
+            ACCEPTANCE_STATUSES),
+        file_scope=_matrix(
+            "file_scope", ("path", "requirement", "reason", "status"),
+            SCOPE_STATUSES),
         raw=data,
     )

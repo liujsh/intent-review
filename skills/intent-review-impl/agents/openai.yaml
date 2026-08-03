@@ -1,0 +1,4 @@
+interface:
+  display_name: "Intent Review Implementation"
+  short_description: "Verify implementation evidence before commit."
+  default_prompt: "Use -review-impl to review the finished implementation before commit."

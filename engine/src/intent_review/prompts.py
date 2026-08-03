@@ -20,6 +20,8 @@ _COMMON_RULES = """\
 - 已核对且无问题的方面写入 verified_ok。
 - 不要修改任何文件。不要联网。
 - 如果你认为没有问题，让 findings 为空数组即可。不要为了凑数而报发现。
+- 输出必须包含 acceptance_coverage 和 file_scope；方案审查时两者返回空数组。
+- category 只使用 contract-drift、requirement-gap、unsupported-scope、wrong-layer、coupling、unverifiable、implementation-drift、file-scope、test-evidence。
 """
 
 _IDENTITY = """\
@@ -56,6 +58,7 @@ def _history_section(prev_findings: list[dict] | None,
 def build_plan_review_prompt(
     *,
     source_text: str,
+    contract_text: str,
     plan_paths: list[str],
     focus: str | None = None,
     prev_findings: list[dict] | None = None,
@@ -74,6 +77,10 @@ def build_plan_review_prompt(
 
 {source_text}
 
+## 当前任务契约
+
+{contract_text}
+
 {_history_section(prev_findings, decisions)}
 ## 审查顺序
 
@@ -89,6 +96,7 @@ def build_plan_review_prompt(
 def build_impl_review_prompt(
     *,
     source_text: str,
+    contract_text: str,
     plan_paths: list[str],
     change_map_text: str,
     focus: str | None = None,
@@ -108,6 +116,10 @@ def build_impl_review_prompt(
 
 {source_text}
 
+## 当前任务契约
+
+{contract_text}
+
 ## 自批准基线以来的变更地图（工具生成，确定性事实）
 
 ```
@@ -122,5 +134,8 @@ def build_impl_review_prompt(
 3. 实现是否偏离已批准方案：未声明的公共接口、依赖、数据结构或跨层改动。
 4. 测试是否证明目标行为，而不是仅仅绿色。被弱化或绕过的测试报为发现。
 5. 成对路径（成功/失败、读/写、新建/更新）是否遗漏。
+
+必须逐项填写 acceptance_coverage（criterion/implementation/test_evidence/status）和
+file_scope（path/requirement/reason/status）两张矩阵，不能只在 findings 中概括。
 
 {_COMMON_RULES}"""

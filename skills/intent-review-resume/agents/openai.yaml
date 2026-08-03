@@ -1,0 +1,4 @@
+interface:
+  display_name: "Intent Review Resume"
+  short_description: "Restore an active task and its approved decisions safely."
+  default_prompt: "Use -review-resume to continue the active task in this repository."

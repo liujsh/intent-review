@@ -1,0 +1,55 @@
+{
+  "findings": [
+    {
+      "severity": "blocker",
+      "category": "wrong-layer / contract-violation",
+      "claim": "方案把纯 Web 展示需求错误地下沉到共享线协议，并要求所有客户端配合，直接违反当前任务契约且扩大了范围。",
+      "evidence": [
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "明确规定状态徽章属于 Web 展示层，并禁止修改共享协议。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "计划向 shared wire protocol 添加 `badge_text`，并要求每个客户端发送该字段。"
+        },
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求只要求在 Web UI 的按钮旁显示临时状态徽章，没有要求协议或其他客户端变更。"
+        }
+      ],
+      "impact": "实施该方案会造成不必要的公共协议变更、跨客户端兼容成本，并违反明确的架构边界；即使协议字段完成，也不能证明 Web UI 已显示徽章。",
+      "recommendation": "删除共享协议和全客户端变更，改为仅在 Web UI 层利用现有前端状态，在按钮旁渲染并按预期生命周期移除徽章。",
+      "confidence": "high"
+    },
+    {
+      "severity": "high",
+      "category": "requirements-and-verification",
+      "claim": "方案没有覆盖用户要求的实际 UI 行为，也没有任务或验收标准证明徽章位于按钮旁且仅临时显示。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "明确包含三个可观察要求：Web UI 中显示、位于按钮旁、临时存在。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "唯一任务只是增加协议字段；没有 Web 渲染、相邻布局、出现/消失条件或测试说明。"
+        }
+      ],
+      "impact": "方案完成后可能完全没有用户可见变化，且无法验收位置与临时生命周期是否符合需求。",
+      "recommendation": "补充 Web 组件修改任务，并定义可验证的出现触发条件、消失条件、按钮旁布局，以及相应的组件/UI 测试。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [],
+  "unverifiable": [
+    "快照仅包含 source.md、contract.md 和 plan.md，没有应用源码；因此无法从仓库代码确定具体 Web 组件、现有状态来源或应执行的测试命令。"
+  ],
+  "acceptance_coverage": [],
+  "file_scope": []
+}

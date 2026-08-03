@@ -1,0 +1,56 @@
+{
+  "findings": [
+    {
+      "severity": "high",
+      "category": "需求忠实度",
+      "claim": "方案没有实现“对当前已加载表格一键下载”的客户端流程，而是将其替换为未说明交互方式的 CSV 服务端点。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求明确要求 “one-click CSV download for the current table”。"
+        },
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约明确要求序列化已经加载的表格。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案只提出 “CSV endpoint”，未包含当前表格数据序列化、下载按钮或一键触发下载，也没有任何验收标准。"
+        }
+      ],
+      "impact": "即使完成该方案，也无法证明用户能一键下载当前表格，且服务端点可能导出与当前界面状态、筛选或排序不一致的数据。",
+      "recommendation": "将方案改为在现有表格所属的前端模块中序列化已加载的数据并触发 CSV 文件下载；明确一键入口，并增加覆盖当前表格内容、CSV 转义及下载行为的验收标准。",
+      "confidence": "high"
+    },
+    {
+      "severity": "high",
+      "category": "范围与架构",
+      "claim": "方案引入报告数据库、迁移框架和保留任务，直接违背“不需要服务端持久化”的任务契约。",
+      "evidence": [
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约明确写明 “No server persistence is needed.”"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案计划创建 “report database, migration framework, retention worker”，均属于服务端持久化及其运维范围。"
+        }
+      ],
+      "impact": "会显著扩大实现、部署、数据治理、迁移和回滚范围，并带来原始需求完全不需要的持久化风险与维护成本。",
+      "recommendation": "删除数据库、迁移框架、保留任务及 CSV 服务端点；把改动限制在已加载表格的本地 CSV 序列化和下载交互。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [],
+  "unverifiable": [
+    "快照仅包含 source.md、contract.md 和 plan.md，没有应用源码，因此无法核对现有表格所属模块、具体架构边界以及应修改的文件。",
+    "方案未提供数据字段、CSV 格式规则、兼容性要求或回滚设计，无法进一步验证这些方面。"
+  ],
+  "acceptance_coverage": [],
+  "file_scope": []
+}

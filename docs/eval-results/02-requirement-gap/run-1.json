@@ -1,0 +1,35 @@
+{
+  "findings": [
+    {
+      "severity": "blocker",
+      "category": "requirement fidelity and acceptance coverage",
+      "claim": "方案将唯一核心需求改写为 Bash 启动器，并且只计划在 Ubuntu 和 macOS 上验证，既引入了 shell-specific behavior，也完全遗漏 Windows 验证。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求明确要求命令运行于 Windows、macOS 和 Linux。"
+        },
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约要求支持三个平台，且不得依赖特定 shell 行为。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案提出 “Implement a Bash launcher and verify it on Ubuntu and macOS.”，与契约直接冲突且未覆盖 Windows。"
+        }
+      ],
+      "impact": "按此方案完成后，无法证明命令可在 Windows 上运行；Bash 启动器本身还会使可用性取决于特定 shell，因而不能满足任务契约。",
+      "recommendation": "改为不依赖 Bash 或其他平台专属 shell 的实现方式，并明确列出 Windows、macOS、Linux 三个平台上的执行验证任务与验收标准；测试应使用各平台原生环境并验证同一公开命令及关键参数、退出码和错误路径。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [],
+  "unverifiable": [
+    "快照仅包含需求、契约和方案文档，没有代码、模块结构或测试配置，因此无法核对具体改动位置、依赖、安全、兼容、迁移及回滚风险。"
+  ],
+  "acceptance_coverage": [],
+  "file_scope": []
+}
