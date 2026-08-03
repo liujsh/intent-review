@@ -63,6 +63,11 @@ def test_absolute_path_rejected(snapshot: Path):
     assert c.status is EvidenceStatus.PATH_ESCAPES
 
 
+def test_unc_path_rejected(snapshot: Path):
+    c = check_evidence(snapshot, _ev(r"\\server\share\secret.txt", 1))
+    assert c.status is EvidenceStatus.PATH_ESCAPES
+
+
 def test_binary_file_unreadable(snapshot: Path):
     (snapshot / "blob.bin").write_bytes(b"\x00\x01\x02")
     c = check_evidence(snapshot, _ev("blob.bin", 1))

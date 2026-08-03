@@ -1,0 +1,53 @@
+{
+  "findings": [
+    {
+      "severity": "blocker",
+      "category": "需求契约漂移",
+      "claim": "方案遗漏了用户明确要求的离线使用能力，并将导出设计为依赖远程 API，直接违背“无需网络连接”的要求。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求明确要求“support offline use without a network connection”。"
+        },
+        {
+          "path": "contract.md",
+          "line": 4,
+          "detail": "当前契约仅保留“Export reports to JSON”，静默丢失离线要求。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案要求 JSON 导出按钮调用远程报告 API，因此导出路径依赖网络。"
+        }
+      ],
+      "impact": "断网时远程 API 无法调用，用户要求的离线使用无法实现；即使 JSON 导出在联网环境可用，整体原始需求仍未完成。",
+      "recommendation": "先把离线使用恢复为正式契约目标，再规划不依赖网络的本地报告读取与 JSON 序列化/下载路径，并加入断网场景的明确验收标准。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "验收完整性",
+      "claim": "方案没有任务分解或验收标准，无法证明 JSON 导出本身以及断网使用场景已经完成。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "全文只有“添加按钮并调用远程报告 API”这一实现描述，没有 JSON 有效性、导出内容、错误处理或断网测试标准。"
+        }
+      ],
+      "impact": "实施完成的判定缺乏可验证依据，可能只完成按钮或 API 调用，而没有产生可用的 JSON 报告。",
+      "recommendation": "补充至少覆盖有效 JSON 文件、报告内容完整性、导出失败处理，以及完全断网条件下核心离线功能可用的验收标准。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "原始需求中的“将报告导出为 JSON”已进入当前契约，并在 plan.md 中体现为 JSON 导出按钮。",
+    "快照仅包含 source.md、contract.md 和 plan.md，未发现方案引入额外公共抽象或第三方依赖。"
+  ],
+  "unverifiable": [
+    "快照没有实现代码，无法判断报告数据当前位于本地还是远程、正确的模块和架构层、JSON 格式兼容性，以及具体的数据、安全、迁移和回滚风险。"
+  ],
+  "acceptance_coverage": [],
+  "file_scope": []
+}

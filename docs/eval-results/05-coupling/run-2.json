@@ -1,0 +1,70 @@
+{
+  "findings": [
+    {
+      "severity": "high",
+      "category": "requirements-fidelity",
+      "claim": "方案把“展示 checkout API 已返回的 total”替换成了渲染时直接查询 billing 数据库，违背当前任务契约。",
+      "evidence": [
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约明确要求：Display the total already returned by the checkout API."
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案改为在 web component 中直接导入 billing database repository，并在渲染期间查询 invoices。"
+        }
+      ],
+      "impact": "实现将绕过现有 checkout API，增加前端与账单持久层的耦合，并可能造成重复查询、数据口径不一致及不必要的数据库访问边界扩大。",
+      "recommendation": "让 checkout 页面从现有 checkout API 响应中读取 total 并展示；不要在 web component 中引入 billing database repository 或新增发票查询。",
+      "confidence": "high"
+    },
+    {
+      "severity": "high",
+      "category": "requirement-completeness",
+      "claim": "方案没有明确安排把 invoice total 渲染到 checkout 页面，只描述了查询 invoices。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求明确要求在 checkout page 上 display invoice total。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "唯一方案内容仅涉及导入数据库 repository 和查询 invoices，未说明读取 total、格式化或在 checkout 页面展示。"
+        }
+      ],
+      "impact": "即使完成方案所述工作，也无法证明用户可在 checkout 页面看到 invoice total。",
+      "recommendation": "补充明确任务：定位 checkout API 响应中的 total，将其传入 checkout 页面展示组件，并定义对应的可见性验收。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "verification",
+      "claim": "方案没有测试或验收标准，无法证明页面展示的是 checkout API 已返回的 total。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案只有一条实现描述，没有测试任务或验收条件。"
+        },
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约要求展示 API 已返回的 total，因此需要验证数据来源和页面输出。"
+        }
+      ],
+      "impact": "实现可能显示错误字段、重新查询所得值或根本未显示，完成标记也缺少可复核依据。",
+      "recommendation": "增加页面/组件测试：给定 checkout API 响应中的 total，断言 checkout 页面显示该值，并断言无需新增 billing repository 查询。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [],
+  "unverifiable": [
+    "快照仅包含 plan.md、source.md 和 contract.md，没有应用代码或测试文件，无法核对 checkout API 响应字段结构、页面组件位置、金额格式规则及现有架构边界。"
+  ],
+  "acceptance_coverage": [],
+  "file_scope": []
+}

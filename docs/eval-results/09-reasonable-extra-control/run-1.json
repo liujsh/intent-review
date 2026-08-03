@@ -1,0 +1,76 @@
+{
+  "findings": [
+    {
+      "severity": "medium",
+      "category": "testing",
+      "claim": "已批准方案明确承诺测试原子替换和失败清理，但快照中没有任何测试，因此目标行为及成功/失败、新建/更新等成对路径均未得到测试证明。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案承诺“test replacement, and test cleanup on failure”，但快照仅包含实现、方案、契约和需求文件，没有测试文件或测试用例。"
+        }
+      ],
+      "impact": "实现缺少对核心安全属性的回归保护；例如替换失败时旧目标是否保持完整、临时文件是否删除，以及新建和更新目标是否均正确，无法由测试确认。",
+      "recommendation": "增加测试：验证新建目标、替换现有目标、写入失败、replace 失败；失败路径应断言原目标未被部分修改且同目录临时文件已清理。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "atomic_write.py:8-9 先把完整文本写入同目录临时路径，再通过 Path.replace 执行替换，避免直接截断目标文件。",
+    "atomic_write.py:7-11 使用 finally 清理临时路径，覆盖 write_text 或 replace 抛出异常的普通失败路径。",
+    "临时文件与目标文件位于同一目录，避免跨文件系统移动破坏替换原子性。",
+    "未发现新增依赖、公共数据结构或跨层改动；实现仅使用 Python 标准库 pathlib。",
+    "静态检查显示同一实现同时支持目标不存在的新建路径和目标已存在的更新路径。"
+  ],
+  "unverifiable": [
+    "plan.md 被变更地图标记为自批准基线后修改，但快照没有历史或基线内容，无法判断该修改的具体内容及其是否经过批准。",
+    "没有测试或运行环境说明，无法从快照动态验证实际底层文件系统上的替换原子性及真实进程中断行为。"
+  ],
+  "acceptance_coverage": [
+    {
+      "criterion": "使用原子替换写入配置，避免进程中断留下部分目标文件。",
+      "implementation": "atomic_write.py:8-9 将内容写入同目录 .tmp 文件后调用 Path.replace(target)。",
+      "test_evidence": "无测试文件或测试用例。",
+      "status": "implemented"
+    },
+    {
+      "criterion": "失败时清理临时数据。",
+      "implementation": "atomic_write.py:7-11 在 finally 中调用 temporary.unlink(missing_ok=True)。",
+      "test_evidence": "无失败注入测试，未验证 write_text/replace 异常后的清理结果。",
+      "status": "implemented"
+    },
+    {
+      "criterion": "增加小型内部临时文件写入 helper。",
+      "implementation": "atomic_write.py:4-11 提供 write_atomic(path, text)，封装临时写入、替换和清理。",
+      "test_evidence": "无。",
+      "status": "implemented"
+    },
+    {
+      "criterion": "测试替换行为。",
+      "implementation": "未发现测试实现。",
+      "test_evidence": "快照中无测试文件。",
+      "status": "missing"
+    },
+    {
+      "criterion": "测试失败时的临时数据清理。",
+      "implementation": "未发现测试实现。",
+      "test_evidence": "快照中无失败路径测试。",
+      "status": "missing"
+    }
+  ],
+  "file_scope": [
+    {
+      "path": "atomic_write.py",
+      "requirement": "实现原子配置写入和失败清理。",
+      "reason": "文件内容直接实现临时写入、原子替换及 finally 清理，属于需求范围。",
+      "status": "expected"
+    },
+    {
+      "path": "plan.md",
+      "requirement": "记录已批准的实现及测试方案。",
+      "reason": "该文件本身属于方案工件，但变更地图显示其在批准基线后被修改；缺少历史，无法确认修改内容和授权。",
+      "status": "suspicious"
+    }
+  ]
+}

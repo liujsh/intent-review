@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -117,9 +118,15 @@ def _run_rounds(
 
 
 def _new_run_dir(base: Path, reviewer: str) -> Path:
-    d = base / datetime.now(timezone.utc).strftime(f"%y%m%d-%H%M%S-{reviewer}")
-    d.mkdir(parents=True)
-    return d
+    stem = datetime.now(timezone.utc).strftime(f"%y%m%d-%H%M%S-{reviewer}")
+    for suffix in range(1000):
+        d = base / (stem if suffix == 0 else f"{stem}-{suffix}")
+        try:
+            d.mkdir(parents=True)
+            return d
+        except FileExistsError:
+            continue
+    raise RuntimeError("同一秒创建的审查运行过多")
 
 
 # ── 低层命令 ──────────────────────────────────────────────
@@ -178,8 +185,10 @@ def cmd_changes(args: argparse.Namespace) -> int:
 def cmd_init(args: argparse.Namespace) -> int:
     from .taskstore import TaskStoreError, init_task
     source = _read_text_arg(args.source_file, "用户原始需求（逐字）")
+    contract = (Path(args.contract_file).read_text(encoding="utf-8")
+                if args.contract_file else None)
     try:
-        task = init_task(Path(args.repo), args.task, source)
+        task = init_task(Path(args.repo), args.task, source, contract)
     except TaskStoreError as exc:
         print(f"错误: {exc}", file=sys.stderr)
         return 1
@@ -201,10 +210,101 @@ def cmd_intent_add(args: argparse.Namespace) -> int:
     return 0
 
 
+def _select_task(repo: Path, task_id: str | None):
+    from .taskstore import TaskStoreError, active_tasks, load_task
+    if task_id:
+        return load_task(repo, task_id)
+    candidates = active_tasks(repo)
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise TaskStoreError("当前仓库和分支没有活跃任务")
+    raise TaskStoreError("存在多个活跃任务，请用 --task 指定: " +
+                         ", ".join(t.task_id for t in candidates))
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    from .taskstore import (TaskStoreError, read_contract, read_decisions,
+                            read_metadata, unresolved_findings)
+    try:
+        task = _select_task(Path(args.repo), args.task)
+        meta = read_metadata(task)
+    except TaskStoreError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 2
+    summary = {
+        "task_id": task.task_id,
+        "stage": meta["stage"],
+        "branch": meta.get("branch", ""),
+        "plan_snapshot": meta.get("plan_snapshot"),
+        "unresolved_findings": len(unresolved_findings(task)),
+        "decisions": len(read_decisions(task)),
+        "contract": read_contract(task),
+        "next": {
+            "draft": "完成方案后运行 plan-review",
+            "plan_review": "处理发现并显式 approve-plan",
+            "plan_changes_requested": "修改方案并重新 plan-review",
+            "plan_approved": "实施完成后运行 impl-review",
+            "implementing": "实施完成后运行 impl-review",
+            "implementation_review": "处理发现并显式 approve-implementation",
+            "changes_requested": "修改实现并重新 impl-review",
+            "ready": "提交前可关闭任务",
+            "closed": "任务已关闭",
+        }[meta["stage"]],
+    }
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    else:
+        print(f"任务: {summary['task_id']}\n阶段: {summary['stage']}\n"
+              f"未解决发现: {summary['unresolved_findings']}\n下一步: {summary['next']}\n\n"
+              f"{summary['contract']}")
+    return 0
+
+
+def cmd_approve_plan(args: argparse.Namespace) -> int:
+    from .taskstore import TaskStoreError, approve_plan, load_task
+    try:
+        task = load_task(Path(args.repo), args.task)
+        baseline = approve_plan(task, Path(args.repo), args.plan)
+    except TaskStoreError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 1
+    print(f"方案已冻结并批准；基线: {baseline['commit']}")
+    return 0
+
+
+def cmd_approve_implementation(args: argparse.Namespace) -> int:
+    from .taskstore import TaskStoreError, approve_implementation, load_task
+    try:
+        task = load_task(Path(args.repo), args.task)
+        approve_implementation(task)
+    except TaskStoreError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 1
+    print("用户已明确确认实现；任务状态: ready")
+    return 0
+
+
+def cmd_close(args: argparse.Namespace) -> int:
+    from .taskstore import TaskStoreError, load_task, read_metadata, set_stage
+    try:
+        task = load_task(Path(args.repo), args.task)
+        if read_metadata(task)["stage"] != "ready":
+            raise TaskStoreError("只有 ready 任务可以关闭")
+        set_stage(task, "closed")
+    except TaskStoreError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 1
+    print("任务已关闭")
+    return 0
+
+
 def _task_review(args: argparse.Namespace, *, impl: bool) -> int:
+    from .evidence import EvidenceGuardError, enforce_review_guard
     from .prompts import build_impl_review_prompt, build_plan_review_prompt
     from .taskstore import (TaskStoreError, latest_union, load_task,
-                            read_decisions, read_source)
+                            read_contract, read_decisions, read_metadata,
+                            read_source, set_stage, unresolved_findings)
     repo = Path(args.repo).resolve()
     try:
         task = load_task(repo, args.task)
@@ -223,45 +323,88 @@ def _task_review(args: argparse.Namespace, *, impl: bool) -> int:
         print(f"错误: {exc}", file=sys.stderr)
         return 1
 
-    missing = [p for p in args.plan if not (snapshot_dir / p).exists()]
+    plan_paths = list(args.plan or [])
+    baseline = getattr(args, "baseline", None)
+    meta = read_metadata(task)
+    if impl and meta.get("plan_snapshot") and meta["plan_snapshot"].get("status") == "fresh":
+        approved = task.plan_dir / "snapshot"
+        if approved.is_dir():
+            approved_dest = snapshot_dir / ".intent-review-approved-plan"
+            shutil.copytree(approved, approved_dest)
+            plan_paths = [str(Path(".intent-review-approved-plan") / p)
+                          for p in meta["plan_snapshot"].get("plan_files", {})]
+            baseline = meta["plan_snapshot"].get("commit")
+    if impl and meta.get("plan_snapshot") and meta["plan_snapshot"].get("status") == "stale":
+        print("错误: 已批准方案快照已过期，请先重新完成方案审查", file=sys.stderr)
+        return 1
+    missing = [p for p in plan_paths if not (snapshot_dir / p).exists()]
     if missing:
         print(f"错误: 方案文件不在快照中: {missing}", file=sys.stderr)
         return 1
 
     source_text = read_source(task)
+    contract_text = read_contract(task)
     prev = latest_union(task)
     decisions = read_decisions(task)
 
     if impl:
         from .changes import ChangesError, build_change_map, render_change_map
         try:
-            cm = build_change_map(repo, args.baseline)
+            if not baseline:
+                raise ChangesError("缺少批准基线；先运行 approve-plan 或传 --baseline")
+            cm = build_change_map(repo, baseline)
         except ChangesError as exc:
             print(f"错误: {exc}", file=sys.stderr)
             return 1
         cm_text = render_change_map(cm)
         (run_dir / "change-map.txt").write_text(cm_text, encoding="utf-8")
         prompt = build_impl_review_prompt(
-            source_text=source_text, plan_paths=args.plan,
+            source_text=source_text, contract_text=contract_text, plan_paths=plan_paths,
             change_map_text=cm_text, focus=args.focus,
             prev_findings=prev, decisions=decisions)
     else:
         prompt = build_plan_review_prompt(
-            source_text=source_text, plan_paths=args.plan,
+            source_text=source_text, contract_text=contract_text, plan_paths=plan_paths,
             focus=args.focus, prev_findings=prev, decisions=decisions)
+
+    plan_evidence = {}
+    for rel in plan_paths:
+        path = snapshot_dir / rel
+        plan_evidence[f"plan:{rel}"] = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        budget = enforce_review_guard(
+            evidence={"source.md": source_text, "contract.md": contract_text,
+                      **plan_evidence},
+            snapshot_dir=snapshot_dir, runs_dir=task.runs_dir,
+            rounds=args.rounds, max_rounds=args.max_rounds,
+            max_files=args.max_files, max_input_bytes=args.max_input_bytes,
+            max_task_tokens=args.max_task_tokens)
+    except EvidenceGuardError as exc:
+        (run_dir / "GUARD-FAILED.txt").write_text(str(exc), encoding="utf-8")
+        print(f"错误: {exc}；覆盖不完整，不是通过", file=sys.stderr)
+        return 3
 
     (run_dir / "request.json").write_text(json.dumps({
         "review_type": "implementation" if impl else "plan",
-        "task": args.task, "plan": args.plan, "focus": args.focus,
+        "task": args.task, "plan": plan_paths, "focus": args.focus,
         "ref": args.ref, "base_commit": base_commit,
-        "baseline": getattr(args, "baseline", None),
+        "baseline": baseline,
         "prev_findings": len(prev or []), "decisions": len(decisions),
+        "budget": budget,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    return _run_rounds(
+    set_stage(task, "implementation_review" if impl else "plan_review")
+    rc = _run_rounds(
         prompt=prompt, snapshot_dir=snapshot_dir, run_dir=run_dir,
         reviewer=args.reviewer, model=args.model,
         rounds=args.rounds, timeout=args.timeout)
+    if rc == 0:
+        severe = [item for item in unresolved_findings(
+            task, "implementation" if impl else "plan")
+            if item.get("finding", item).get("severity") in ("blocker", "high")]
+        if severe:
+            set_stage(task, "changes_requested" if impl else "plan_changes_requested")
+    return rc
 
 
 def cmd_plan_review(args: argparse.Namespace) -> int:
@@ -311,6 +454,10 @@ def main(argv: list[str] | None = None) -> int:
         sp.add_argument("--rounds", type=int, default=2,
                         help="默认 2：单轮覆盖不完整是实证结论")
         sp.add_argument("--timeout", type=float, default=600)
+        sp.add_argument("--max-rounds", type=int, default=4)
+        sp.add_argument("--max-files", type=int, default=1000)
+        sp.add_argument("--max-input-bytes", type=int, default=200000)
+        sp.add_argument("--max-task-tokens", type=int, default=500000)
 
     sp = sub.add_parser("snapshot", help="构建无 .git 证据快照")
     sp.add_argument("repo")
@@ -339,6 +486,7 @@ def main(argv: list[str] | None = None) -> int:
     ip.add_argument("--repo", default=".")
     ip.add_argument("--task", required=True, help="任务 slug，如 260716-intent-bubble")
     ip.add_argument("--source-file", help="原文文件；缺省从 stdin 读")
+    ip.add_argument("--contract-file", help="结构化契约文件；缺省生成保守模板")
     ip.set_defaults(func=cmd_init)
 
     ap = sub.add_parser("intent-add", help="逐字追加补充约束")
@@ -346,6 +494,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--task", required=True)
     ap.add_argument("--source-file")
     ap.set_defaults(func=cmd_intent_add)
+
+    rsp = sub.add_parser("resume", help="恢复唯一活跃任务或指定任务")
+    rsp.add_argument("--repo", default=".")
+    rsp.add_argument("--task")
+    rsp.add_argument("--json", action="store_true")
+    rsp.set_defaults(func=cmd_resume)
 
     pp = sub.add_parser("plan-review", help="方案审查（自动快照+提示词+核验）")
     pp.add_argument("--repo", default=".")
@@ -361,8 +515,8 @@ def main(argv: list[str] | None = None) -> int:
     mp = sub.add_parser("impl-review", help="实现审查（含变更地图）")
     mp.add_argument("--repo", default=".")
     mp.add_argument("--task", required=True)
-    mp.add_argument("--plan", required=True, nargs="+")
-    mp.add_argument("--baseline", required=True, help="批准时的基线 commit")
+    mp.add_argument("--plan", nargs="+", help="未冻结方案时的预检查文件")
+    mp.add_argument("--baseline", help="未冻结方案时的预检查基线")
     mp.add_argument("--focus")
     mp.add_argument("--ref", default="worktree")
     _common_review_args(mp)
@@ -378,6 +532,22 @@ def main(argv: list[str] | None = None) -> int:
                              "irrelevant-true", "resolved"])
     jp.add_argument("--reason", help="rejected/deferred/irrelevant-true 必填")
     jp.set_defaults(func=cmd_adjudicate)
+
+    app = sub.add_parser("approve-plan", help="显式批准并冻结方案与 Git 基线")
+    app.add_argument("--repo", default=".")
+    app.add_argument("--task", required=True)
+    app.add_argument("--plan", required=True, nargs="+")
+    app.set_defaults(func=cmd_approve_plan)
+
+    aip = sub.add_parser("approve-implementation", help="显式确认实现并标记 ready")
+    aip.add_argument("--repo", default=".")
+    aip.add_argument("--task", required=True)
+    aip.set_defaults(func=cmd_approve_implementation)
+
+    clp = sub.add_parser("close", help="关闭 ready 任务")
+    clp.add_argument("--repo", default=".")
+    clp.add_argument("--task", required=True)
+    clp.set_defaults(func=cmd_close)
 
     args = p.parse_args(argv)
     return args.func(args)

@@ -1,0 +1,58 @@
+{
+  "findings": [
+    {
+      "severity": "blocker",
+      "category": "需求忠实度 / 架构耦合",
+      "claim": "方案把“展示 checkout API 已返回的 total”替换成了渲染时直接查询 billing 数据库，且没有明确在 checkout 页面渲染 invoice total。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求要求在 checkout 页面展示 invoice total。"
+        },
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约明确要求使用 checkout API 已经返回的 total。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案改为在 web component 中直接导入 billing database repository 并在渲染期间查询 invoices。"
+        }
+      ],
+      "impact": "实现将绕过既有 API 数据流，引入 UI 对数据库持久层的直接依赖，并可能最终仍未满足指定页面展示 total 的要求。",
+      "recommendation": "改为从 checkout API 的现有响应模型读取 total，并在 checkout 页面组件中展示；不要新增数据库查询或直接依赖 billing repository。",
+      "confidence": "high"
+    },
+    {
+      "severity": "medium",
+      "category": "验收与验证",
+      "claim": "方案没有测试任务或验收标准，无法证明 total 被正确展示，也无法防止重新查询数据库的错误实现。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "全文只有一条实现描述，没有 checkout 页面展示、API 响应复用或测试相关的验收条件。"
+        },
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约中的关键约束是复用 checkout API 已返回的 total，但方案没有对应验证步骤。"
+        }
+      ],
+      "impact": "即使任务被标记完成，也没有证据证明 UI 展示正确、数据来自既有 API，或现有 checkout 行为未被破坏。",
+      "recommendation": "加入至少一项 checkout 页面测试：构造包含 total 的 checkout API 响应，验证页面显示该值，并验证无需额外 billing 数据库查询。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "原始需求与当前契约一致：契约只是进一步明确 total 已由 checkout API 返回，没有改变用户要求。",
+    "方案没有提出数据库 schema 迁移或数据写入。"
+  ],
+  "unverifiable": [
+    "只读快照仅包含 plan.md、contract.md 和 source.md；没有应用代码或测试，因此无法核对实际 checkout 模块边界、API 响应字段、金额格式化规则、权限模型及现有测试覆盖。"
+  ],
+  "acceptance_coverage": [],
+  "file_scope": []
+}

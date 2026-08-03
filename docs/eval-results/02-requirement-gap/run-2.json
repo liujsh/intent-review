@@ -1,0 +1,38 @@
+{
+  "findings": [
+    {
+      "severity": "blocker",
+      "category": "requirement fidelity / platform compatibility",
+      "claim": "方案明确采用 Bash 启动器，并且只验证 Ubuntu 和 macOS，静默遗漏 Windows，同时引入了契约禁止的 shell-specific behavior。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "“Implement a Bash launcher and verify it on Ubuntu and macOS.”"
+        },
+        {
+          "path": "用户原始需求",
+          "line": 1,
+          "detail": "“The command must run on Windows, macOS, and Linux.”"
+        },
+        {
+          "path": "当前任务契约",
+          "line": 3,
+          "detail": "“Support Windows, macOS, and Linux without shell-specific behavior.”"
+        }
+      ],
+      "impact": "按此方案完成后，无法证明命令可在 Windows 运行；Bash 依赖还可能直接导致 Windows 环境不可用。方案因此不能满足任务的唯一核心要求。",
+      "recommendation": "改为不依赖 Bash 或其他特定 shell 的跨平台实现；任务和验收标准必须覆盖 Windows、macOS、Linux，并验证各平台无需 shell-specific 行为即可执行。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [
+    "方案明确包含 macOS 验证。",
+    "方案以 Ubuntu 代表 Linux，并明确包含该环境的验证。"
+  ],
+  "unverifiable": [
+    "方案未说明具体改动文件、现有命令架构或依赖，因此无法判断改动是否位于正确模块、是否引入额外依赖，以及兼容与回滚风险。"
+  ],
+  "acceptance_coverage": [],
+  "file_scope": []
+}

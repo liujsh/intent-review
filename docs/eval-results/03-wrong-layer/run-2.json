@@ -1,0 +1,55 @@
+{
+  "findings": [
+    {
+      "severity": "blocker",
+      "category": "架构层级 / 契约违反",
+      "claim": "方案把纯 Web 展示需求错误地下沉到共享 wire protocol，并强制所有客户端配合，直接违反当前任务契约。",
+      "evidence": [
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "方案要求向 shared wire protocol 添加 `badge_text`，并要求 every client 发送该字段。"
+        },
+        {
+          "path": "contract.md",
+          "line": 3,
+          "detail": "契约明确规定状态徽章属于 Web presentation concern，且“Do not change shared protocols.”"
+        },
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "原始需求仅要求在 Web UI 按钮旁显示临时状态徽章，没有要求协议或其他客户端变更。"
+        }
+      ],
+      "impact": "会扩大变更范围、耦合所有客户端，并在被明确禁止修改的共享协议层引入兼容性和发布协调风险。即使协议改动完成，也不能证明 Web UI 已显示徽章。",
+      "recommendation": "删除所有共享协议及非 Web 客户端改动；在 Web UI 本地状态与展示组件中实现徽章。",
+      "confidence": "high"
+    },
+    {
+      "severity": "high",
+      "category": "需求覆盖 / 验收缺失",
+      "claim": "方案没有规划原始需求的三个关键可观察行为：徽章需要显示在按钮旁、仅临时显示、并实际出现在 Web UI。",
+      "evidence": [
+        {
+          "path": "source.md",
+          "line": 1,
+          "detail": "需求明确包含“temporary”、“beside the button”和“in the web UI”。"
+        },
+        {
+          "path": "plan.md",
+          "line": 3,
+          "detail": "唯一任务只是新增并发送协议字段，没有 Web 组件渲染、位置、显示时机、消失条件或验收标准。"
+        }
+      ],
+      "impact": "按当前方案执行后可能只产生协议字段，而用户看不到任何徽章；即便另行渲染，也无法验证位置和临时生命周期符合需求。",
+      "recommendation": "补充 Web UI 实现任务和可验证的验收标准：状态触发时徽章出现在目标按钮旁，规定何时隐藏或移除，并用相应 UI 测试覆盖显示、位置和消失行为。",
+      "confidence": "high"
+    }
+  ],
+  "verified_ok": [],
+  "unverifiable": [
+    "只读快照仅包含 plan.md、source.md 和 contract.md，没有仓库实现代码或测试，因此无法核验具体 Web 模块、组件边界、现有状态来源及可复用测试设施。"
+  ],
+  "acceptance_coverage": [],
+  "file_scope": []
+}

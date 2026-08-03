@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "frozen_at": "2026-07-15",
+  "adjustments": [],
+  "thresholds": {
+    "positive_run_hits_min": 12,
+    "double_hit_fixtures_min": 6,
+    "control_high_false_positives_max": 0,
+    "high_evidence_rate_min": 1.0,
+    "all_evidence_rate_min": 0.9
+  },
+  "fixtures": [
+    {"id": "01-contract-drift", "control": false, "review_type": "plan", "target": {"categories": ["contract-drift"], "claim_terms_any": ["offline", "离线", "遗漏"]}},
+    {"id": "02-requirement-gap", "control": false, "review_type": "plan", "target": {"categories": ["requirement-gap"], "claim_terms_any": ["windows", "遗漏", "缺少"]}},
+    {"id": "03-wrong-layer", "control": false, "review_type": "plan", "target": {"categories": ["wrong-layer"], "claim_terms_any": ["protocol", "协议", "ui"]}},
+    {"id": "04-unsupported-scope", "control": false, "review_type": "plan", "target": {"categories": ["unsupported-scope"], "claim_terms_any": ["database", "数据库", "扩大"]}},
+    {"id": "05-coupling", "control": false, "review_type": "plan", "target": {"categories": ["coupling"], "claim_terms_any": ["billing", "计费", "耦合"]}},
+    {"id": "06-implementation-drift", "control": false, "review_type": "implementation", "target": {"categories": ["implementation-drift"], "claim_terms_any": ["public", "公共", "接口"]}},
+    {"id": "07-test-evidence", "control": false, "review_type": "implementation", "target": {"categories": ["test-evidence"], "claim_terms_any": ["empty", "空", "行为"]}},
+    {"id": "08-file-scope", "control": false, "review_type": "implementation", "target": {"categories": ["file-scope"], "claim_terms_any": ["unrelated", "无关", "logo"]}},
+    {"id": "09-reasonable-extra-control", "control": true, "review_type": "implementation"},
+    {"id": "10-style-control", "control": true, "review_type": "plan"}
+  ]
+}

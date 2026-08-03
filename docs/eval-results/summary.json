@@ -1,0 +1,12 @@
+{
+  "positive_hits": 16,
+  "positive_runs": 16,
+  "double_hit_fixtures": 8,
+  "positive_fixtures": 8,
+  "control_high_false_positives": 0,
+  "high_evidence_valid": 24,
+  "high_findings": 24,
+  "all_evidence_valid": 42,
+  "all_findings": 42,
+  "passed": true
+}

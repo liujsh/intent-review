@@ -18,6 +18,8 @@ def _valid_payload() -> dict:
         }],
         "verified_ok": ["src/x.py:9 超时已设置"],
         "unverifiable": ["运行时行为未验证"],
+        "acceptance_coverage": [],
+        "file_scope": [],
     }
 
 
