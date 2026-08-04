@@ -1,10 +1,10 @@
 # 同类项目调研
 
-调研时间：2026-07-15。
+调研时间：2026-07-15；2026-08-03 根据实现与对比结论更新。
 
 ## 结论
 
-现有工具已经证明“独立 Agent 审查方案和实现”具有真实需求，但多数方案从计划或 Git Diff 开始，没有把用户原始需求、补充约束、否决意见、已批准方案和最终文件范围维护成一条可追踪链路。Intent Review 的机会不在于再做一个模型调用桥梁，而在于建立跨阶段的意图契约和证据化审查协议。
+现有工具已经证明“独立 Agent 审查方案和实现”具有真实需求，但多数方案从计划或 Git Diff 开始，没有把用户原始需求、补充约束、Contract 修订裁决、已批准方案、实际运行证据和最终文件范围维护成一条可追踪链路。Intent Review 的工作有意义，但前提是坚持做意图溯源与独立审计层，而不是再造规范生成器或模型调用桥梁。
 
 ## 主要同类
 
@@ -54,8 +54,15 @@ Codex `/review` 支持工作区、分支和提交范围，并能在独立任务�
 
 ## 类型对照
 
-| 类型 | 代表 | 核心状态 | 主要价值 |
-| --- | --- | --- | --- |
-| Skill / Prompt Pack | 单个审查 Skill | 当前聊天上下文 | 快速复用提示词和流程 |
-| Host Plugin + Runtime Bridge | `codex-plugin-cc` | Job / Session | 在一个 Agent 宿主中调用另一个 Runtime |
-| Task Audit Engine | Intent Review | 跨 Session Task | 维护意图、批准方案、实现证据和裁决链 |
+| 方案 | 原始意图账本 | Contract 修订裁决 | 方案冻结 | 运行证据闸门 | 外部 spec 接入 |
+| --- | --- | --- | --- | --- | --- |
+| Codex `/review` / Subagent | 否 | 否 | 否 | 否 | 通用文件读取 |
+| `codex-plugin-cc` | Job/Session 级 | 否 | 否 | Runtime 状态，不是验收证据 | 否 |
+| `codex-review` | 弱，主要从计划开始 | 决策账本，但非完整 Contract 生命周期 | 是 | 弱 | 否 |
+| gstack | 流程上下文 | 跨模型分歧处理 | 有流程状态 | 发布前检查 | 非专用 adapter |
+| Spec Kit / OpenSpec | 以规范为中心 | 规范变更流程 | artifact 版本化 | 任务/检查清单 | 原生生产者 |
+| Intent Review | 逐字 source + Session | proposal / accept / reject，append-only | 不可变快照 + stale 闸门 | 必需检查失败或缺失禁止 ready | 只读自动发现 adapter |
+
+## 比别人多什么、少什么
+
+多的是从逐字原始需求到最终实现的 provenance chain、不可静默覆盖的 Contract 生命周期、实际命令结果账本，以及对 Spec Kit/OpenSpec 的互补式审查接入。少的是成熟生态、IDE/PR Bot、后台任务 UI、云端协作、自动修复和大规模公开基准。当前最重要的证据缺口是：已有 20 次结果属于 legacy baseline，仍需在冻结套件与 v2 scorer 下独立重跑，才能形成严格可复现的质量主张。

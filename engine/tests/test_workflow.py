@@ -9,7 +9,10 @@ from intent_review.taskstore import (
     append_intent,
     approve_implementation,
     approve_plan,
+    decide_contract,
     init_task,
+    propose_contract,
+    record_check,
     read_metadata,
 )
 
@@ -68,6 +71,21 @@ def test_plan_approval_freezes_and_contract_change_stales(repo: Path):
     meta = read_metadata(task)
     assert meta["stage"] == "plan_review"
     assert meta["plan_snapshot"]["status"] == "stale"
+    assert meta["contract"]["status"] == "stale"
+    with pytest.raises(TaskStoreError, match="Contract 状态"):
+        approve_plan(task, repo, ["plan.md"])
+
+
+def test_accepted_contract_revision_stales_approved_plan(repo: Path):
+    task = init_task(repo, "task-1", "do it")
+    _run(task, "plan")
+    approve_plan(task, repo, ["plan.md"])
+    proposal = propose_contract(task, "# Contract\n\nrevised")
+    decide_contract(task, proposal, "accepted", "需求已确认")
+    meta = read_metadata(task)
+    assert meta["contract"]["status"] == "current"
+    assert meta["plan_snapshot"]["status"] == "stale"
+    assert meta["stage"] == "plan_review"
 
 
 def test_blocker_prevents_plan_approval(repo: Path):
@@ -93,5 +111,68 @@ def test_ready_requires_complete_evidence(repo: Path):
     result = {"findings": [], "verified_ok": [], "unverifiable": [],
               "acceptance_coverage": [], "file_scope": []}
     (_run_dir / "round-1-result.json").write_text(json.dumps(result), encoding="utf-8")
+    record_check(task, command="pytest", exit_code=0, summary="passed")
     approve_implementation(task)
     assert read_metadata(task)["stage"] == "ready"
+
+
+def test_ready_requires_passing_runtime_checks(repo: Path):
+    task = init_task(repo, "task-1", "do it")
+    _run(task, "plan")
+    approve_plan(task, repo, ["plan.md"])
+    _run(task, "implementation")
+    with pytest.raises(TaskStoreError, match="没有必需运行证据"):
+        approve_implementation(task)
+    with pytest.raises(TaskStoreError, match="理由"):
+        approve_implementation(task, allow_no_checks=True)
+    record_check(task, command="pytest", exit_code=1, summary="failed")
+    with pytest.raises(TaskStoreError, match="失败"):
+        approve_implementation(task)
+    with pytest.raises(TaskStoreError, match="降级"):
+        record_check(task, command="pytest", exit_code=1,
+                     summary="still failed", required=False)
+    record_check(task, command="pytest", exit_code=0, summary="passed on rerun")
+    approve_implementation(task)
+    assert read_metadata(task)["stage"] == "ready"
+
+
+def test_no_checks_override_is_audited(repo: Path):
+    task = init_task(repo, "task-1", "do it")
+    _run(task, "plan")
+    approve_plan(task, repo, ["plan.md"])
+    _run(task, "implementation")
+    approve_implementation(task, allow_no_checks=True, reason="文档改动")
+    assert "no-runtime-checks-override" in task.decisions_file.read_text(encoding="utf-8")
+
+
+def test_checks_from_stale_plan_do_not_satisfy_new_plan(repo: Path):
+    task = init_task(repo, "task-1", "do it")
+    _run(task, "plan")
+    approve_plan(task, repo, ["plan.md"])
+    record_check(task, command="pytest", exit_code=0, summary="old plan")
+    append_intent(task, "new constraint")
+    proposal = propose_contract(task, "# Contract\n\nnew constraint")
+    decide_contract(task, proposal, "accepted", "matches source")
+    _run_dir = task.runs_dir / "260802-plan"
+    _run_dir.mkdir()
+    (_run_dir / "request.json").write_text(
+        json.dumps({"review_type": "plan"}), encoding="utf-8")
+    (_run_dir / "meta.json").write_text(json.dumps({
+        "rounds": [{"round": 1, "status": "ok"}],
+    }), encoding="utf-8")
+    (_run_dir / "union.json").write_text("[]", encoding="utf-8")
+    approve_plan(task, repo, ["plan.md"])
+    _run_dir = task.runs_dir / "260802-implementation"
+    _run_dir.mkdir()
+    result = {"findings": [], "verified_ok": [], "unverifiable": [],
+              "acceptance_coverage": [], "file_scope": []}
+    (_run_dir / "request.json").write_text(
+        json.dumps({"review_type": "implementation"}), encoding="utf-8")
+    (_run_dir / "meta.json").write_text(json.dumps({
+        "rounds": [{"round": 1, "status": "ok"}],
+    }), encoding="utf-8")
+    (_run_dir / "union.json").write_text("[]", encoding="utf-8")
+    (_run_dir / "round-1-result.json").write_text(
+        json.dumps(result), encoding="utf-8")
+    with pytest.raises(TaskStoreError, match="没有必需运行证据"):
+        approve_implementation(task)

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from .schema import parse_result
 from .verify import verify_result
+
+
+class SuiteLockError(ValueError):
+    """The evaluation suite does not match its recorded immutable digest."""
 
 
 @dataclass
@@ -26,6 +31,46 @@ class EvalMetrics:
 
 def load_suite(suite_dir: Path) -> dict:
     return json.loads((suite_dir / "suite.json").read_text(encoding="utf-8"))
+
+
+def suite_digest(suite_dir: Path) -> str:
+    """Hash the manifest and every file inside its declared fixture dirs."""
+    suite = load_suite(suite_dir)
+    paths = [suite_dir / "suite.json"]
+    for fixture in suite.get("fixtures", []):
+        fixture_dir = suite_dir / fixture["id"]
+        if not fixture_dir.is_dir():
+            raise SuiteLockError(f"Fixture 目录不存在: {fixture['id']}")
+        paths.extend(path for path in fixture_dir.rglob("*") if path.is_file())
+    digest = hashlib.sha256()
+    for path in sorted(set(paths), key=lambda item: item.relative_to(suite_dir).as_posix()):
+        relative = path.relative_to(suite_dir).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def write_suite_lock(suite_dir: Path) -> dict:
+    lock = {"version": 1, "algorithm": "sha256", "digest": suite_digest(suite_dir)}
+    (suite_dir / "lock.json").write_text(
+        json.dumps(lock, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return lock
+
+
+def verify_suite_lock(suite_dir: Path) -> dict:
+    lock_path = suite_dir / "lock.json"
+    if not lock_path.is_file():
+        raise SuiteLockError("评估套件缺少 lock.json；先使用 --freeze-suite 冻结")
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    if lock.get("algorithm") != "sha256" or not lock.get("digest"):
+        raise SuiteLockError("评估套件 lock.json 格式无效")
+    actual = suite_digest(suite_dir)
+    if actual != lock["digest"]:
+        raise SuiteLockError(
+            f"评估套件已变更: lock={lock['digest']} actual={actual}")
+    return lock
 
 
 def _hit(result: dict, target: dict) -> bool:

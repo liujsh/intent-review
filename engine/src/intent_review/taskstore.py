@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
 import subprocess
-import hashlib
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,9 +61,45 @@ class Task:
     def implementation_dir(self) -> Path:
         return self.root / "implementation"
 
+    @property
+    def contract_proposals_dir(self) -> Path:
+        return self.root / "contract" / "proposals"
+
+    @property
+    def contract_revisions_dir(self) -> Path:
+        return self.root / "contract" / "revisions"
+
+    @property
+    def checks_file(self) -> Path:
+        return self.implementation_dir / "checks.jsonl"
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _plan_approval_id(snapshot: dict) -> str:
+    """Return the explicit ID, or a stable identity for pre-ID task metadata."""
+    if snapshot.get("approval_id"):
+        return snapshot["approval_id"]
+    legacy = {key: value for key, value in snapshot.items() if key != "status"}
+    return _sha256_text(json.dumps(legacy, ensure_ascii=False, sort_keys=True))
+
+
+def generate_task_id(repo: Path, slug: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-")[:40]
+    if len(normalized) < 2:
+        raise TaskStoreError("task slug 规范化后至少需要 2 个字符")
+    prefix = datetime.now(timezone.utc).strftime("%y%m%d") + f"-{normalized}"
+    for _ in range(100):
+        candidate = f"{prefix}-{secrets.token_hex(2)}"
+        if not (repo.resolve() / STORE_DIR / "tasks" / candidate).exists():
+            return candidate
+    raise TaskStoreError("无法生成唯一 Task ID")
 
 
 def _ensure_gitignore(repo: Path) -> None:
@@ -92,7 +129,8 @@ def _default_contract(source_text: str) -> str:
 
 
 def init_task(repo: Path, task_id: str, source_text: str,
-              contract_text: str | None = None) -> Task:
+              contract_text: str | None = None,
+              session_id: str | None = None) -> Task:
     """创建任务并逐字保存原始意图。source_text 为空是错误 ——
     需求 1.5：无法获得原文时必须显式失败，不得用概括冒充。"""
     if not _SLUG_RE.match(task_id):
@@ -112,9 +150,8 @@ def init_task(repo: Path, task_id: str, source_text: str,
         f"# 原始意图\n\n记录时间：{_now()}\n\n---\n\n{source_text.rstrip()}\n",
         encoding="utf-8",
     )
-    task.contract_file.write_text(
-        (contract_text or _default_contract(source_text)).rstrip() + "\n",
-        encoding="utf-8")
+    contract = (contract_text or _default_contract(source_text)).rstrip() + "\n"
+    task.contract_file.write_text(contract, encoding="utf-8")
     branch = _git_text(repo, "branch", "--show-current")
     task.metadata_file.write_text(json.dumps({
         "task_id": task_id,
@@ -123,7 +160,12 @@ def init_task(repo: Path, task_id: str, source_text: str,
         "branch": branch,
         "stage": "draft",
         "active": True,
-        "sessions": [],
+        "sessions": ([{"id": session_id, "first_seen": _now()}]
+                     if session_id else []),
+        "contract": {
+            "status": "current", "revision": _sha256_text(contract),
+            "accepted_at": _now(), "pending_proposal": None,
+        },
         "plan_snapshot": None,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     _ensure_gitignore(repo)
@@ -153,6 +195,13 @@ def read_metadata(task: Task) -> dict:
         raise TaskStoreError(f"任务元数据损坏: {task.metadata_file}: {exc}") from exc
     if data.get("stage") not in STAGES:
         raise TaskStoreError(f"非法任务阶段: {data.get('stage')!r}")
+    data.setdefault("sessions", [])
+    if "contract" not in data:
+        contract = read_contract(task)
+        data["contract"] = {
+            "status": "current", "revision": _sha256_text(contract),
+            "accepted_at": data.get("created"), "pending_proposal": None,
+        }
     return data
 
 
@@ -186,6 +235,23 @@ def active_tasks(repo: Path, branch: str | None = None) -> list[Task]:
     return out
 
 
+def record_session(task: Task, session_id: str) -> None:
+    if not session_id.strip():
+        raise TaskStoreError("Session ID 为空")
+    meta = read_metadata(task)
+    if not any(item.get("id") == session_id for item in meta["sessions"]):
+        meta["sessions"].append({"id": session_id, "first_seen": _now()})
+        meta["updated"] = _now()
+        write_metadata(task, meta)
+
+
+def require_current_contract(task: Task) -> None:
+    status = read_metadata(task)["contract"]["status"]
+    if status != "current":
+        raise TaskStoreError(
+            f"Contract 状态为 {status}；请先 contract-propose 并 contract-decide")
+
+
 def append_intent(task: Task, text: str) -> None:
     """追加补充约束，带时间戳，不改动已有内容（需求 1.3）。"""
     if not text.strip():
@@ -197,11 +263,86 @@ def append_intent(task: Task, text: str) -> None:
     if snap:
         snap["status"] = "stale"
         meta["stage"] = "plan_review"
+    superseded = meta["contract"].get("pending_proposal")
+    if superseded:
+        meta["contract"]["pending_proposal"] = None
+        meta["contract"].pop("base_status", None)
+    meta["contract"]["status"] = "stale"
     meta["updated"] = _now()
     write_metadata(task, meta)
     with task.decisions_file.open("a", encoding="utf-8", newline="\n") as f:
+        if superseded:
+            f.write(json.dumps({
+                "time": _now(), "type": "contract-proposal",
+                "proposal": superseded, "decision": "superseded",
+                "reason": "新的用户原始意图使待裁决提案过期",
+            }, ensure_ascii=False) + "\n")
         f.write(json.dumps({"time": _now(), "type": "contract-change",
                             "text": text.rstrip()}, ensure_ascii=False) + "\n")
+
+
+def propose_contract(task: Task, text: str) -> str:
+    if not text.strip():
+        raise TaskStoreError("Contract 提案为空")
+    meta = read_metadata(task)
+    if meta["contract"].get("pending_proposal"):
+        raise TaskStoreError("已有待裁决 Contract 提案")
+    contract = text.rstrip() + "\n"
+    digest = _sha256_text(contract)
+    proposal_id = (datetime.now(timezone.utc).strftime("%y%m%d-%H%M%S-")
+                   + digest[:8] + "-" + secrets.token_hex(2))
+    task.contract_proposals_dir.mkdir(parents=True, exist_ok=True)
+    (task.contract_proposals_dir / f"{proposal_id}.md").write_text(
+        contract, encoding="utf-8")
+    meta["contract"]["base_status"] = meta["contract"]["status"]
+    meta["contract"]["status"] = "proposed"
+    meta["contract"]["pending_proposal"] = proposal_id
+    meta["updated"] = _now()
+    write_metadata(task, meta)
+    return proposal_id
+
+
+def decide_contract(task: Task, proposal_id: str, decision: str,
+                    reason: str) -> None:
+    if decision not in ("accepted", "rejected"):
+        raise TaskStoreError("Contract 裁决只能是 accepted 或 rejected")
+    if not reason.strip():
+        raise TaskStoreError("Contract 裁决必须给出理由")
+    meta = read_metadata(task)
+    contract_meta = meta["contract"]
+    if contract_meta.get("pending_proposal") != proposal_id:
+        raise TaskStoreError(f"不是当前待裁决提案: {proposal_id}")
+    proposal = task.contract_proposals_dir / f"{proposal_id}.md"
+    if not proposal.is_file():
+        raise TaskStoreError(f"Contract 提案文件缺失: {proposal_id}")
+    if decision == "accepted":
+        current = read_contract(task)
+        task.contract_revisions_dir.mkdir(parents=True, exist_ok=True)
+        old_digest = _sha256_text(current)
+        archive = task.contract_revisions_dir / f"{old_digest[:12]}.md"
+        if not archive.exists():
+            archive.write_text(current, encoding="utf-8")
+        new_contract = proposal.read_text(encoding="utf-8")
+        task.contract_file.write_text(new_contract, encoding="utf-8")
+        contract_meta.update({
+            "status": "current", "revision": _sha256_text(new_contract),
+            "accepted_at": _now(), "pending_proposal": None,
+        })
+        if meta.get("plan_snapshot"):
+            meta["plan_snapshot"]["status"] = "stale"
+            meta["stage"] = "plan_review"
+    else:
+        contract_meta["status"] = contract_meta.get("base_status", "current")
+        contract_meta["pending_proposal"] = None
+    contract_meta.pop("base_status", None)
+    meta["updated"] = _now()
+    write_metadata(task, meta)
+    with task.decisions_file.open("a", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps({
+            "time": _now(), "type": "contract-proposal",
+            "proposal": proposal_id, "decision": decision,
+            "reason": reason.strip(),
+        }, ensure_ascii=False) + "\n")
 
 
 def append_decision(
@@ -269,6 +410,9 @@ def unresolved_findings(task: Task, review_type: str | None = None) -> list[dict
 
 
 def approve_plan(task: Task, repo: Path, plan_paths: list[str]) -> dict:
+    require_current_contract(task)
+    if not plan_paths:
+        raise TaskStoreError("方案文件列表为空")
     review_run = latest_run(task, "plan")
     if review_run is None or not (review_run / "meta.json").is_file():
         raise TaskStoreError("尚未成功执行方案审查")
@@ -302,6 +446,7 @@ def approve_plan(task: Task, repo: Path, plan_paths: list[str]) -> dict:
         shutil.copy2(src, dst)
         hashes[rel] = hashlib.sha256(src.read_bytes()).hexdigest()
     baseline = {
+        "approval_id": secrets.token_hex(8),
         "commit": _git_text(repo, "rev-parse", "HEAD"),
         "worktree_status": _git_text(repo, "status", "--porcelain=v1"),
         "approved_at": _now(),
@@ -318,7 +463,49 @@ def approve_plan(task: Task, repo: Path, plan_paths: list[str]) -> dict:
     return baseline
 
 
-def approve_implementation(task: Task) -> None:
+def record_check(task: Task, *, command: str, exit_code: int,
+                 summary: str, required: bool = True) -> None:
+    if not command.strip():
+        raise TaskStoreError("检查命令为空")
+    require_current_contract(task)
+    meta = read_metadata(task)
+    snapshot = meta.get("plan_snapshot")
+    if not snapshot or snapshot.get("status") != "fresh":
+        raise TaskStoreError("没有有效的已批准方案快照，不能记录实现检查")
+    previous = [check for check in read_current_checks(task)
+                if check.get("command") == command]
+    if previous and previous[-1].get("required", True) and not required:
+        raise TaskStoreError("不能把已记录的必需检查降级为 optional")
+    task.implementation_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "time": _now(), "command": command, "exit_code": exit_code,
+        "summary": summary.strip(), "required": required,
+        "plan_approval_id": _plan_approval_id(snapshot),
+        "contract_revision": meta["contract"]["revision"],
+    }
+    with task.checks_file.open("a", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def read_checks(task: Task) -> list[dict]:
+    if not task.checks_file.is_file():
+        return []
+    return [json.loads(line) for line in task.checks_file.read_text(
+        encoding="utf-8").splitlines() if line.strip()]
+
+
+def read_current_checks(task: Task) -> list[dict]:
+    meta = read_metadata(task)
+    snapshot = meta.get("plan_snapshot") or {}
+    current_approval = _plan_approval_id(snapshot) if snapshot else None
+    return [check for check in read_checks(task)
+            if check.get("plan_approval_id") == current_approval
+            and check.get("contract_revision") == meta["contract"]["revision"]]
+
+
+def approve_implementation(task: Task, *, allow_no_checks: bool = False,
+                           reason: str = "") -> None:
+    require_current_contract(task)
     meta = read_metadata(task)
     if not meta.get("plan_snapshot") or meta["plan_snapshot"].get("status") != "fresh":
         raise TaskStoreError("没有有效的已批准方案快照")
@@ -345,6 +532,23 @@ def approve_implementation(task: Task) -> None:
                 if item.get("finding", item).get("severity") == "blocker"]
     if blockers:
         raise TaskStoreError(f"仍有 {len(blockers)} 个未解决 blocker，不能标记 ready")
+    checks = read_current_checks(task)
+    latest_by_command = {}
+    for check in checks:
+        latest_by_command[check.get("command")] = check
+    required_checks = [check for check in latest_by_command.values()
+                       if check.get("required", True)]
+    failed = [check for check in required_checks if check.get("exit_code") != 0]
+    if failed:
+        raise TaskStoreError(f"仍有 {len(failed)} 个必需运行检查失败")
+    if not required_checks:
+        if not allow_no_checks or not reason.strip():
+            raise TaskStoreError("没有必需运行证据；显式 --allow-no-checks 时必须给出理由")
+        with task.decisions_file.open("a", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps({
+                "time": _now(), "type": "no-runtime-checks-override",
+                "reason": reason.strip(),
+            }, ensure_ascii=False) + "\n")
     set_stage(task, "ready")
 
 

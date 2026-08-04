@@ -1,6 +1,6 @@
 # 实施计划
 
-> 2026-08-03 更新：首版核心闭环、四个 Codex Skill、真实 Fixture 质量闸门以及 Windows/Ubuntu 验证已经完成。任务 15 的低成本 Reviewer 路由仍属后续优化；任务 16 的 macOS 实跑由新增 CI 矩阵执行。
+> 2026-08-03 更新：首版核心闭环、四个 Codex Skill 和真实 Fixture legacy baseline 已完成；新增 Contract 修订治理、Spec Kit/OpenSpec adapter、运行证据闸门与评估套件锁。任务 15 的低成本 Reviewer 路由仍属后续优化；macOS CI、Marketplace 和冻结 v2 后的付费复验暂置为外部步骤。
 
 ## 里程碑 0 - 验证可行性与 Reviewer 质量
 
@@ -124,7 +124,7 @@
   - _需求：需求 7_
 
 - [ ] 16. 完成端到端与跨平台验证
-  - 已完成 Windows 与 Ubuntu 的 42 项完整测试（含中文临时路径和 CLI 状态流）；已新增 macOS GitHub Actions 矩阵，等待远端 CI 实跑。
+  - 已完成 Windows 与 Ubuntu 的 58 项完整测试（含中文临时路径、CLI 状态流、Contract 生命周期、artifact adapter、运行证据和评估锁）；已新增 macOS GitHub Actions 矩阵，等待远端 CI 实跑。
   - 在 Windows、macOS 和 Linux 临时仓库中运行完整流程。
   - 验证含空格、中文和特殊字符的仓库路径。
   - 验证大型 Diff、Reviewer 超时、混合工作区、Task Store 被忽略和契约中途变化。
@@ -147,3 +147,13 @@
 - Task Store 被 Git 忽略时仍能作为完整 Task Evidence 使用，且不污染业务 Diff。
 - 强 Reviewer 默认只在方案批准前和提交前调用，预算耗尽不会被误判为通过。
 - 没有用户明确授权时，系统不会修改业务代码、提交或推送。
+
+## 里程碑 5 - 意图溯源强化
+
+- [x] 18. 由 Engine 生成防冲突 Task ID，并记录多个宿主 Session。
+- [x] 19. Contract 采用 proposal / accept / reject 生命周期；补充意图和接受修订都会使旧方案失效。
+- [x] 20. 只读发现 Spec Kit 与 OpenSpec artifacts，复用现有规范生产链而不替代它们。
+- [x] 21. 将真实测试、构建、运行命令写入证据账本；缺失或失败的必需检查禁止 `ready`。
+- [x] 22. 为评估套件生成内容锁和复现元数据，并将既有结果标记为 legacy baseline。
+- [ ] 23. 使用冻结套件与 v2 scorer 重新付费运行 20 次 Reviewer，生成正式 baseline。（需人工授权费用）
+- [ ] 24. 发布 Marketplace、完成账号配置，并取得远端 macOS CI 结果。（需人工外部操作）

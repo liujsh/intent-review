@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -7,12 +8,18 @@ from intent_review.taskstore import (
     TaskStoreError,
     append_decision,
     append_intent,
+    decide_contract,
+    generate_task_id,
     init_task,
     latest_union,
     list_tasks,
     load_task,
     read_decisions,
+    read_contract,
+    read_metadata,
     read_source,
+    record_session,
+    propose_contract,
 )
 
 
@@ -94,3 +101,59 @@ def test_list_and_load(repo: Path):
     assert load_task(repo, "a-task").task_id == "a-task"
     with pytest.raises(TaskStoreError, match="不存在"):
         load_task(repo, "nope")
+
+
+def test_engine_generates_task_id(repo: Path, monkeypatch):
+    monkeypatch.setattr("intent_review.taskstore.secrets.token_hex", lambda _: "abcd")
+    task_id = generate_task_id(repo, "Contract Review")
+    assert re.fullmatch(r"\d{6}-contract-review-[0-9a-f]{4}", task_id)
+    (repo / ".intent-review" / "tasks" / task_id).mkdir(parents=True)
+    monkeypatch.setattr("intent_review.taskstore.secrets.token_hex", lambda _: "ef01")
+    assert generate_task_id(repo, "Contract Review").endswith("-ef01")
+    with pytest.raises(TaskStoreError, match="至少"):
+        generate_task_id(repo, "中文")
+
+
+def test_sessions_are_idempotent(repo: Path):
+    task = init_task(repo, "t1", "原文", session_id="session-a")
+    record_session(task, "session-a")
+    record_session(task, "session-b")
+    assert [item["id"] for item in read_metadata(task)["sessions"]] == [
+        "session-a", "session-b",
+    ]
+
+
+def test_contract_proposal_accepts_and_archives(repo: Path):
+    task = init_task(repo, "t1", "原文", contract_text="old\n")
+    append_intent(task, "新增约束")
+    assert read_metadata(task)["contract"]["status"] == "stale"
+    proposal = propose_contract(task, "new contract")
+    assert read_metadata(task)["contract"]["status"] == "proposed"
+    decide_contract(task, proposal, "accepted", "包含新增约束")
+    meta = read_metadata(task)
+    assert meta["contract"]["status"] == "current"
+    assert read_contract(task) == "new contract\n"
+    assert list(task.contract_revisions_dir.glob("*.md"))
+
+
+def test_contract_rejection_restores_base_status(repo: Path):
+    task = init_task(repo, "t1", "原文")
+    proposal = propose_contract(task, "bad contract")
+    with pytest.raises(TaskStoreError, match="理由"):
+        decide_contract(task, proposal, "rejected", "")
+    decide_contract(task, proposal, "rejected", "遗漏目标")
+    assert read_metadata(task)["contract"]["status"] == "current"
+    assert read_contract(task) != "bad contract\n"
+
+
+def test_new_intent_supersedes_pending_contract_proposal(repo: Path):
+    task = init_task(repo, "t1", "原文")
+    proposal = propose_contract(task, "proposed")
+    append_intent(task, "又一个约束")
+    meta = read_metadata(task)
+    assert meta["contract"]["status"] == "stale"
+    assert meta["contract"]["pending_proposal"] is None
+    with pytest.raises(TaskStoreError, match="不是当前"):
+        decide_contract(task, proposal, "accepted", "过期提案")
+    assert any(item.get("decision") == "superseded"
+               for item in read_decisions(task))

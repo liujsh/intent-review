@@ -1,0 +1,11 @@
+{
+  "official": false,
+  "legacy": true,
+  "generated_under_lock": false,
+  "suite_digest": null,
+  "reviewer": "codex",
+  "model": null,
+  "engine_version": "0.1.0",
+  "scoring_method": "claim-substance-retrospective",
+  "note": "阈值在运行前预注册；结果产生后，scorer 从 category exact match 修正为 claim substance matching。该批结果是 legacy baseline，不是冻结 v2 scorer 后的独立复验。"
+}
